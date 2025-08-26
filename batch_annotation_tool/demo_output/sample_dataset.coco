@@ -1,0 +1,85 @@
+{
+  "info": {
+    "description": "\u6279\u91cf\u6807\u6ce8\u5de5\u5177\u793a\u4f8b\u6570\u636e\u96c6",
+    "version": "1.0",
+    "year": 2024,
+    "contributor": "Batch Annotation Tool",
+    "date_created": "2025-08-22T21:49:32.504450"
+  },
+  "licenses": [],
+  "images": [
+    {
+      "id": 1,
+      "file_name": "sample_image.jpg",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": 2,
+      "file_name": "sample_image2.jpg",
+      "width": 640,
+      "height": 480
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [
+        100,
+        200,
+        50,
+        100
+      ],
+      "area": 5000,
+      "iscrowd": 0,
+      "score": 0.95
+    },
+    {
+      "id": 2,
+      "image_id": 1,
+      "category_id": 2,
+      "bbox": [
+        300,
+        150,
+        80,
+        60
+      ],
+      "area": 4800,
+      "iscrowd": 0,
+      "score": 0.88
+    },
+    {
+      "id": 3,
+      "image_id": 2,
+      "category_id": 3,
+      "bbox": [
+        50,
+        80,
+        40,
+        45
+      ],
+      "area": 1800,
+      "iscrowd": 0,
+      "score": 0.92
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "person",
+      "supercategory": "object"
+    },
+    {
+      "id": 2,
+      "name": "car",
+      "supercategory": "object"
+    },
+    {
+      "id": 3,
+      "name": "dog",
+      "supercategory": "object"
+    }
+  ]
+}

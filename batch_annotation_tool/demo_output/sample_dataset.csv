@@ -1,0 +1,4 @@
+image_id,label,bbox_x,bbox_y,bbox_w,bbox_h,confidence
+sample_image.jpg,person,100,200,50,100,0.95
+sample_image.jpg,car,300,150,80,60,0.88
+sample_image2.jpg,dog,50,80,40,45,0.92

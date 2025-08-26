@@ -1,0 +1,55 @@
+{
+  "name": "sample_dataset",
+  "description": "批量标注工具示例数据集",
+  "created_at": "2025-08-22T21:49:32.504450",
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": "sample_image.jpg",
+      "label": "person",
+      "bbox": [
+        100,
+        200,
+        50,
+        100
+      ],
+      "confidence": 0.95,
+      "created_at": "2025-08-22T21:49:32.504450"
+    },
+    {
+      "id": 2,
+      "image_id": "sample_image.jpg",
+      "label": "car",
+      "bbox": [
+        300,
+        150,
+        80,
+        60
+      ],
+      "confidence": 0.88,
+      "created_at": "2025-08-22T21:49:32.504450"
+    },
+    {
+      "id": 3,
+      "image_id": "sample_image2.jpg",
+      "label": "dog",
+      "bbox": [
+        50,
+        80,
+        40,
+        45
+      ],
+      "confidence": 0.92,
+      "created_at": "2025-08-22T21:49:32.504450"
+    }
+  ],
+  "statistics": {
+    "total_images": 2,
+    "total_annotations": 3,
+    "labels": [
+      "person",
+      "car",
+      "dog"
+    ]
+  }
+}
