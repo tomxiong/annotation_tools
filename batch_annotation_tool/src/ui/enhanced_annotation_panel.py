@@ -35,6 +35,11 @@ class GrowthPattern:
     HEAVY_GROWTH = "heavy_growth"  # 重度生长
     FOCAL = "focal"              # 聚焦性生长（真菌）
     DIFFUSE = "diffuse"          # 弥漫性生长（真菌）
+    
+    # 系统默认模式（可区分的默认值）
+    DEFAULT_POSITIVE = "default_positive"    # 阳性系统默认（区分于手动选择）
+    DEFAULT_WEAK = "default_weak_growth"     # 弱生长系统默认（区分于手动选择）
+    DEFAULT_NEGATIVE = "clean"               # 阴性系统默认（与clean相同，因为阴性本身就是清亮）
 
 class FeatureCombination:
     def __init__(self, growth_level=GrowthLevel.NEGATIVE, growth_pattern=GrowthPattern.CLEAN, 
@@ -54,7 +59,7 @@ class FeatureCombination:
         
         if self.interference_factors:
             interference_str = "+".join(sorted(self.interference_factors))
-            label_parts.append(f"带{interference_str}")
+            label_parts.append(f"with_{interference_str}")  # Use English instead of Chinese
         
         return "_".join(label_parts)
     
@@ -66,6 +71,28 @@ class FeatureCombination:
             'interference_factors': list(self.interference_factors),
             'confidence': self.confidence
         }
+    
+    @staticmethod
+    def get_distinguishable_default_pattern(growth_level: str) -> str:
+        """
+        获取可区分的默认生长模式
+        这些默认值与手动选择的模式不同，可以让用户区分系统生成和手动选择
+        
+        Args:
+            growth_level: 生长级别 ('positive', 'weak_growth', 'negative')
+            
+        Returns:
+            可区分的默认模式字符串
+        """
+        if growth_level == "positive":
+            # 阳性默认为专用默认模式，区分于手动的clustered/scattered/heavy_growth
+            return GrowthPattern.DEFAULT_POSITIVE
+        elif growth_level == "weak_growth":
+            # 弱生长默认为专用默认模式，区分于手动的small_dots/light_gray/irregular_areas
+            return GrowthPattern.DEFAULT_WEAK
+        else:  # negative
+            # 阴性默认为清亮（阴性本身就应该是清亮的）
+            return GrowthPattern.DEFAULT_NEGATIVE
     
     @classmethod
     def from_dict(cls, data):
@@ -162,7 +189,14 @@ class EnhancedAnnotationPanel:
         pattern_frame = ttk.LabelFrame(self.main_frame, text="生长模式")
         pattern_frame.pack(fill=tk.X, padx=5, pady=2)
         
-        patterns = [
+        # 系统默认模式（放在前面，优先显示）
+        default_patterns = [
+            ("阳性默认", "default_positive"),
+            ("弱生长默认", "default_weak_growth")
+        ]
+        
+        # 手动选择模式（放在后面）
+        manual_patterns = [
             ("清亮", "clean"),
             ("中心小点", "small_dots"),
             ("浅灰色", "light_gray"),
@@ -174,11 +208,26 @@ class EnhancedAnnotationPanel:
             ("弥漫性", "diffuse")
         ]
         
-        for text, value in patterns:
+        # 创建系统默认按钮（优先显示，使用特殊标识）
+        for text, value in default_patterns:
+            btn = ttk.Radiobutton(pattern_frame, text=f"[系统] {text}", variable=self.current_growth_pattern, 
+                                 value=value, command=self.on_pattern_change)
+            btn.pack(side=tk.LEFT, padx=5)
+            self.pattern_buttons[value] = btn
+            print(f"[UI] 创建默认模式按钮: {text} -> {value}")
+        
+        # 添加分隔线
+        #separator = ttk.Separator(pattern_frame, orient='vertical')
+        #separator.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=5)
+        
+        # 创建手动选择按钮
+        for text, value in manual_patterns:
             btn = ttk.Radiobutton(pattern_frame, text=text, variable=self.current_growth_pattern, 
                                  value=value, command=self.on_pattern_change)
             btn.pack(side=tk.LEFT, padx=5)
             self.pattern_buttons[value] = btn
+        
+        print(f"[UI] 所有模式按钮已创建: {list(self.pattern_buttons.keys())}")
     
     def create_interference_section(self):
         """创建干扰因素选择"""
@@ -242,25 +291,30 @@ class EnhancedAnnotationPanel:
         growth_level = self.current_growth_level.get()
         microbe_type = self.current_microbe_type.get()
         
-        # 定义每个生长级别对应的模式选项
+        # 定义每个生长级别对应的模式选项（默认值排在第一位）
         pattern_options = {
             "negative": ["clean"],
-            "weak_growth": ["small_dots", "light_gray", "irregular_areas"],
-            "positive": ["clustered", "scattered", "heavy_growth"] if microbe_type == "bacteria" 
-                       else ["focal", "diffuse", "heavy_growth"]
+            "weak_growth": ["default_weak_growth", "small_dots", "light_gray", "irregular_areas"],
+            "positive": (["default_positive", "clustered", "scattered", "heavy_growth"] if microbe_type == "bacteria" 
+                       else ["default_positive", "focal", "diffuse", "heavy_growth"])
         }
         
         # 获取当前级别的可用选项
         available_patterns = pattern_options.get(growth_level, [])
+        print(f"[UI] 生长级别: {growth_level}, 可用模式: {available_patterns}")
         
         # 更新按钮显示状态
+        visible_count = 0
         for pattern_value, btn in self.pattern_buttons.items():
             if pattern_value in available_patterns:
                 btn.config(state="normal")
                 btn.pack(side=tk.LEFT, padx=5)
+                visible_count += 1
             else:
                 btn.config(state="disabled")
                 btn.pack_forget()  # 隐藏不可用的选项
+        
+        print(f"[UI] 显示模式按钮数量: {visible_count}/{len(self.pattern_buttons)}")
         
         # 重置当前选择到第一个可用选项
         if available_patterns:
@@ -338,53 +392,87 @@ class EnhancedAnnotationPanel:
     def get_current_feature_combination(self):
         """获取当前特征组合"""
         try:
-            print("开始获取特征组合...")
+            # Only log when there's a significant change or error
             interference_factors = set()
             for factor, var in self.interference_vars.items():
                 if var.get():
                     interference_factors.add(factor)
             
-            print(f"growth_level: {self.current_growth_level.get()}")
-            print(f"growth_pattern: {self.current_growth_pattern.get()}")
-            print(f"interference_factors: {interference_factors}")
-            print(f"confidence: {self.current_confidence.get()}")
+            growth_level = self.current_growth_level.get()
+            growth_pattern = self.current_growth_pattern.get()
+            confidence = self.current_confidence.get()
             
+            # Create combination silently for normal operations
             combination = FeatureCombination(
-                growth_level=self.current_growth_level.get(),
-                growth_pattern=self.current_growth_pattern.get(),
+                growth_level=growth_level,
+                growth_pattern=growth_pattern,
                 interference_factors=interference_factors,
-                confidence=self.current_confidence.get()
+                confidence=confidence
             )
             
-            print(f"特征组合创建成功: {combination}")
-            print(f"to_label 类型: {type(combination.to_label)}")
-            print(f"to_label 值: {combination.to_label}")
+            # Only log if this is a new or changed combination
+            current_state = (growth_level, growth_pattern, tuple(sorted(interference_factors)), confidence)
+            if not hasattr(self, '_last_combination_state') or self._last_combination_state != current_state:
+                print(f"[ANNOTATION] 特征组合: {growth_level}{'_' + growth_pattern if growth_pattern else ''}{'+' + '+'.join(sorted(interference_factors)) if interference_factors else ''} [{confidence:.2f}]")
+                self._last_combination_state = current_state
             
             return combination
         except Exception as e:
-            print(f"获取特征组合时出错: {e}")
+            print(f"[ERROR] 获取特征组合时出错: {e}")
             import traceback
             traceback.print_exc()
             raise
     
     def set_feature_combination(self, combination):
         """设置特征组合"""
-        self.current_growth_level.set(combination.growth_level)
-        self.current_growth_pattern.set(combination.growth_pattern)
-        self.current_confidence.set(combination.confidence)
-        
-        # 重置干扰因素
-        for var in self.interference_vars.values():
-            var.set(False)
-        
-        # 设置干扰因素
-        for factor in combination.interference_factors:
-            if factor in self.interference_vars:
-                self.interference_vars[factor].set(True)
-        
-        self.update_pattern_options()
-        self.update_interference_options()
-        self.update_preview()
+        try:
+            # 处理生长级别 - 可能是枚举或字符串
+            growth_level = combination.growth_level
+            if hasattr(growth_level, 'value'):
+                growth_level = growth_level.value
+            self.current_growth_level.set(growth_level)
+            
+            # 处理生长模式 - 可能是枚举或字符串
+            growth_pattern = combination.growth_pattern
+            if growth_pattern is not None:
+                if hasattr(growth_pattern, 'value'):
+                    growth_pattern = growth_pattern.value
+                self.current_growth_pattern.set(growth_pattern)
+            else:
+                self.current_growth_pattern.set("")
+            
+            # 设置置信度
+            self.current_confidence.set(combination.confidence)
+            
+            print(f"[RESTORE] 设置特征组合: 级别={growth_level}, 模式={growth_pattern}")
+            
+            # 重置干扰因素
+            for var in self.interference_vars.values():
+                var.set(False)
+            
+            # 设置干扰因素
+            for factor in combination.interference_factors:
+                if factor in self.interference_vars:
+                    self.interference_vars[factor].set(True)
+                elif hasattr(factor, 'value') and factor.value in [k.value if hasattr(k, 'value') else k for k in self.interference_vars.keys()]:
+                    # 处理枚举类型的干扰因素
+                    for k, v in self.interference_vars.items():
+                        if (hasattr(k, 'value') and k.value == factor.value) or k == factor.value:
+                            v.set(True)
+                            break
+            
+            self.update_pattern_options()
+            self.update_interference_options()
+            self.update_preview()
+            
+            print(f"[RESTORE] 特征组合设置完成")
+            
+        except Exception as e:
+            print(f"[ERROR] 设置特征组合失败: {e}")
+            import traceback
+            traceback.print_exc()
+            # 回退到默认状态
+            self.reset_annotation()
     
     def quick_negative(self):
         """快速设置为阴性"""
@@ -416,6 +504,40 @@ class EnhancedAnnotationPanel:
         self.update_pattern_options()
         self.update_interference_options()
         self.update_preview()
+    
+    def initialize_with_defaults(self, growth_level: str = "negative", microbe_type: str = "bacteria"):
+        """
+        使用可区分的默认值初始化面板
+        用于系统初始化或加载没有enhanced_data的标注时
+        
+        Args:
+            growth_level: 生长级别
+            microbe_type: 微生物类型
+        """
+        # 设置微生物类型
+        self.current_microbe_type.set(microbe_type)
+        
+        # 设置生长级别
+        self.current_growth_level.set(growth_level)
+        
+        # 获取可区分的默认模式
+        default_pattern = FeatureCombination.get_distinguishable_default_pattern(growth_level)
+        print(f"[INIT] 为生长级别 '{growth_level}' 获取默认模式: {default_pattern}")
+        self.current_growth_pattern.set(default_pattern)
+        
+        # 重置干扰因素
+        for var in self.interference_vars.values():
+            var.set(False)
+        
+        # 设置默认置信度
+        self.current_confidence.set(1.0)
+        
+        # 更新界面选项
+        self.update_pattern_options()
+        self.update_interference_options()
+        self.update_preview()
+        
+        print(f"[INIT] 初始化面板完成: 级别={growth_level}, 默认模式={default_pattern} (可区分默认值)")
     
     def clear_annotation(self):
         """清空标注 - 与reset_annotation相同，为了兼容性"""

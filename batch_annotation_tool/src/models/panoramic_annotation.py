@@ -163,12 +163,26 @@ class PanoramicAnnotation(Annotation):
             'annotation_source': self.annotation_source,
             'is_confirmed': self.is_confirmed
         })
+        
+        # Include timestamp if it exists (for proper timestamp preservation)
+        if hasattr(self, 'timestamp') and self.timestamp:
+            if isinstance(self.timestamp, str):
+                base_dict['timestamp'] = self.timestamp
+            else:
+                base_dict['timestamp'] = self.timestamp.isoformat()
+            print(f"[SERIALIZE] 保存 timestamp 到字典: {base_dict['timestamp']}")
+        
+        # Include enhanced_data if it exists (for JSON persistence)
+        if hasattr(self, 'enhanced_data') and self.enhanced_data:
+            base_dict['enhanced_data'] = self.enhanced_data
+            print(f"[SERIALIZE] 保存 enhanced_data 到字典: {len(str(self.enhanced_data))} 字符")
+        
         return base_dict
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
         """从字典创建对象"""
-        return cls(
+        annotation = cls(
             image_path=data.get('image_path', data.get('image_id', '')),
             label=data['label'],
             bbox=data['bbox'],
@@ -184,6 +198,18 @@ class PanoramicAnnotation(Annotation):
             annotation_source=data.get('annotation_source', 'manual'),
             is_confirmed=data.get('is_confirmed', False)
         )
+        
+        # Restore enhanced_data if it exists (for JSON persistence)
+        if 'enhanced_data' in data and data['enhanced_data']:
+            annotation.enhanced_data = data['enhanced_data']
+            print(f"[DESERIALIZE] 恢复 enhanced_data 从字典: {len(str(data['enhanced_data']))} 字符")
+        
+        # Restore timestamp if it exists (for proper timestamp preservation)
+        if 'timestamp' in data and data['timestamp']:
+            annotation.timestamp = data['timestamp']
+            print(f"[DESERIALIZE] 恢复 timestamp 从字典: {data['timestamp']}")
+        
+        return annotation
 
 
 class PanoramicDataset:

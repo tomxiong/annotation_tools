@@ -33,6 +33,7 @@ from ui.enhanced_annotation_panel import EnhancedAnnotationPanel
 from services.panoramic_image_service import PanoramicImageService
 from services.config_file_service import ConfigFileService
 from models.panoramic_annotation import PanoramicAnnotation, PanoramicDataset
+from models.enhanced_annotation import EnhancedPanoramicAnnotation, FeatureCombination
 from models.enhanced_annotation import EnhancedPanoramicAnnotation
 from ui.batch_import_dialog import show_batch_import_dialog
 
@@ -45,7 +46,9 @@ class PanoramicAnnotationGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("全景图像标注工具 - 微生物药敏检测")
-        self.root.geometry("2400x1300")
+        # 设置合理的窗口大小，遵循布局规范
+        self.root.geometry("1680x1200")
+        self.root.minsize(1600, 1100)  # 设置最小尺寸
         
         # 服务和管理器
         self.image_service = PanoramicImageService()
@@ -190,12 +193,13 @@ class PanoramicAnnotationGUI:
     
     def create_panoramic_panel(self, parent):
         """创建全景图显示面板"""
-        panoramic_frame = ttk.LabelFrame(parent, text="全景图 (12×10孔位布局)")
-        panoramic_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # 全景图面板 - 按照规范设置合理尺寸
+        panoramic_frame = ttk.LabelFrame(parent, text="全景图 (12×10孔位布局)", width=1200)
+        panoramic_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        panoramic_frame.pack_propagate(False)  # 固定宽度
         
-        # 全景图显示区域 - 调整尺寸以适应3088×2064比例
-        # 全景图显示区域 - 增大尺寸适应2560×1440全屏操作
-        self.panoramic_canvas = tk.Canvas(panoramic_frame, bg='white', width=1400, height=900)
+        # 全景图显示区域 - 设置合理的显示尺寸
+        self.panoramic_canvas = tk.Canvas(panoramic_frame, bg='white', width=1150, height=700)
         self.panoramic_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 绑定鼠标点击事件
@@ -210,17 +214,19 @@ class PanoramicAnnotationGUI:
     
     def create_slice_panel(self, parent):
         """创建切片显示和控制面板"""
-        right_frame = ttk.Frame(parent)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
+        # 标注操作面板宽度 - 按照新的窗口尺寸设置合理宽度
+        right_frame = ttk.Frame(parent, width=420)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+        right_frame.pack_propagate(False)  # 固定宽度
         
         # 批量操作 - 移到第一个位置
         self.create_batch_panel(right_frame)
         
-        # 切片显示区域 - 缩小显示区域，按原始大小显示
+        # 切片显示区域 - 设置合理的显示尺寸
         slice_frame = ttk.LabelFrame(right_frame, text="当前切片")
         slice_frame.pack(fill=tk.X, padx=(0, 0), pady=(0, 5))
         
-        # 减小切片画布尺寸，使用原始大小显示
+        # 设置合理的切片显示尺寸
         self.slice_canvas = tk.Canvas(slice_frame, bg='white', width=200, height=200)
         self.slice_canvas.pack(padx=5, pady=5)
         
@@ -360,7 +366,7 @@ class PanoramicAnnotationGUI:
         ann_frame = ttk.LabelFrame(parent, text="标注控制")
         ann_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
         
-        # 标注按钮 - 移动到增强标注面板之上
+        # 标注按钮
         self.button_frame = ttk.Frame(ann_frame)
         self.button_frame.pack(fill=tk.X, padx=5, pady=(5, 5))
         
@@ -371,7 +377,7 @@ class PanoramicAnnotationGUI:
         ttk.Button(self.button_frame, text="清除标注", 
                   command=self.clear_current_annotation).pack(side=tk.LEFT, padx=5)
         
-        # 创建增强标注面板 - 放在按钮下方
+        # 创建增强标注面板
         self.enhanced_annotation_frame = ttk.Frame(ann_frame)
         self.enhanced_annotation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
         
@@ -488,18 +494,18 @@ class PanoramicAnnotationGUI:
     def create_batch_panel(self, parent):
         """创建批量操作面板"""
         batch_frame = ttk.LabelFrame(parent, text="批量操作")
-        batch_frame.pack(fill=tk.X, pady=(0, 0))
+        batch_frame.pack(fill=tk.X, pady=(0, 2))
         
-        # 统计信息
+        # 统计信息 - 紧凑布局
         stats_frame = ttk.Frame(batch_frame)
-        stats_frame.pack(fill=tk.X, padx=5, pady=2)
+        stats_frame.pack(fill=tk.X, padx=3, pady=1)
         
         self.stats_label = ttk.Label(stats_frame, text="统计: 未标注 0, 阴性 0, 弱生长 0, 阳性 0")
         self.stats_label.pack()
         
-        # 批量操作按钮
+        # 批量操作按钮 - 紧凑布局
         batch_buttons_frame = ttk.Frame(batch_frame)
-        batch_buttons_frame.pack(fill=tk.X, padx=5, pady=0)
+        batch_buttons_frame.pack(fill=tk.X, padx=3, pady=(0, 2))
         
         ttk.Button(batch_buttons_frame, text="标注整行为阴性", 
                   command=self.batch_annotate_row_negative).pack(side=tk.LEFT, padx=2)
@@ -676,7 +682,6 @@ class PanoramicAnnotationGUI:
         
         try:
             # 更新当前信息
-            # 更新当前信息
             self.current_panoramic_id = current_file['panoramic_id']
             self.current_hole_number = current_file['hole_number']
             self.hole_number_var.set(str(self.current_hole_number))
@@ -690,13 +695,26 @@ class PanoramicAnnotationGUI:
             if self.slice_image:
                 # 增强显示效果
                 enhanced_slice = self.image_service.enhance_slice_image(self.slice_image)
-                # 按原始大小显示，不进行放大
+                
+                # 获取画布尺寸用于缩放
+                canvas_width = self.slice_canvas.winfo_width() or 200
+                canvas_height = self.slice_canvas.winfo_height() or 200
+                
+                # 计算合适的缩放比例，充分利用可视区域
+                img_width, img_height = enhanced_slice.size
+                scale_factor = min((canvas_width - 20) / img_width, (canvas_height - 20) / img_height)
+                scale_factor = min(scale_factor, 2.5)  # 最大放大2.5倍，避免过度模糊
+                
+                # 缩放图像以更好地利用空间
+                if scale_factor > 1.0:  # 只有当需要放大时才缩放
+                    new_width = int(img_width * scale_factor)
+                    new_height = int(img_height * scale_factor)
+                    enhanced_slice = enhanced_slice.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
                 self.slice_photo = ImageTk.PhotoImage(enhanced_slice)
                 
                 # 显示在画布上
                 self.slice_canvas.delete("all")
-                canvas_width = self.slice_canvas.winfo_width()
-                canvas_height = self.slice_canvas.winfo_height()
                 if canvas_width > 1 and canvas_height > 1:  # 确保画布已初始化
                     x = canvas_width // 2
                     y = canvas_height // 2
@@ -719,8 +737,81 @@ class PanoramicAnnotationGUI:
             # 尝试加载配置文件标注
             self.load_config_annotations()
             
+            # 延迟强制刷新确保统计和状态完全同步
+            self.root.after_idle(self._delayed_navigation_refresh)
+            
         except Exception as e:
             messagebox.showerror("错误", f"加载切片失败: {str(e)}")
+    
+    def _delayed_navigation_refresh(self):
+        """延迟导航刷新，确保所有数据已正确加载"""
+        try:
+            print(f"[NAV] 延迟导航刷新 - 孔位{self.current_hole_number}")
+            
+            # 强制更新统计信息
+            self.update_statistics()
+            self.root.update_idletasks()
+            
+            # 强制更新状态显示
+            self.update_slice_info_display()
+            self.root.update_idletasks()
+            
+            # 再次验证更新结果，必要时重复更新
+            self.root.after(100, self._verify_and_retry_sync)
+            
+            print("[NAV] 延迟导航刷新完成")
+            
+        except Exception as e:
+            print(f"[ERROR] 延迟导航刷新失败: {e}")
+    
+    def _force_navigation_refresh(self):
+        """导航后强制刷新，确保统计和状态更新"""
+        try:
+            print(f"[NAV] 强制导航刷新 - 孔位{self.current_hole_number}")
+            
+            # 立即更新统计和状态
+            self.update_statistics()
+            self.root.update_idletasks()
+            
+            self.update_slice_info_display()
+            self.root.update_idletasks()
+            
+            # 强制刷新界面
+            self.root.update()
+            
+            print("[NAV] 强制导航刷新完成")
+            
+        except Exception as e:
+            print(f"[ERROR] 强制导航刷新失败: {e}")
+    
+    def _verify_and_retry_sync(self):
+        """验证同步结果，必要时重试"""
+        try:
+            # Reduce verification logging frequency
+            print(f"[VERIFY] 验证同步结果 - 孔位{self.current_hole_number}")
+            
+            # 再次更新统计和状态显示
+            self.update_statistics()
+            self.update_slice_info_display()
+            self.root.update_idletasks()
+            
+            # Only log verification details when there are actual changes
+            if hasattr(self, 'stats_label'):
+                stats_text = self.stats_label.cget('text')
+                if not hasattr(self, '_last_verified_stats') or self._last_verified_stats != stats_text:
+                    print(f"[VERIFY] 统计更新: {stats_text}")
+                    self._last_verified_stats = stats_text
+            
+            if hasattr(self, 'slice_info_label'):
+                slice_text = self.slice_info_label.cget('text')
+                if not hasattr(self, '_last_verified_info') or self._last_verified_info != slice_text:
+                    print(f"[VERIFY] 切片信息更新: {slice_text[:50]}...")  # Truncate long text
+                    self._last_verified_info = slice_text
+                
+            print("[VERIFY] 验证同步完成")
+            
+        except Exception as e:
+            print(f"[ERROR] 验证同步失败: {e}")
     
     def load_panoramic_image(self):
         """加载全景图"""
@@ -789,54 +880,120 @@ class PanoramicAnnotationGUI:
             self.current_hole_number
         )
         
+        print(f"[LOAD] 加载已有标注 - 孔位{self.current_hole_number}, 有标注: {existing_ann is not None}")
+        
         if existing_ann:
             # 设置界面状态
             self.current_microbe_type.set(existing_ann.microbe_type)
             self.current_growth_level.set(existing_ann.growth_level)
             
-            # 同步到增强标注面板
+            # 同步时间戳到内存（对所有手动标注处理，包括manual和enhanced_manual）
+            if ((hasattr(existing_ann, 'annotation_source') and 
+                 existing_ann.annotation_source in ['enhanced_manual', 'manual'])):
+                import datetime
+                annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                
+                # 优先使用annotation对象中的timestamp
+                if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
+                    try:
+                        if isinstance(existing_ann.timestamp, str):
+                            dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
+                        else:
+                            dt = existing_ann.timestamp
+                        self.last_annotation_time[annotation_key] = dt
+                        print(f"[LOAD] 使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}")
+                        print(f"[TIMESTAMP] 来源: 保存的JSON文件 (annotation.timestamp)")
+                    except Exception as e:
+                        print(f"[ERROR] 时间戳解析失败: {e}")
+                        # 解析失败时使用内存中的时间戳或生成默认时间
+                        if annotation_key in self.last_annotation_time:
+                            print(f"[LOAD] 使用内存中的时间戳: {annotation_key}")
+                        else:
+                            default_time = datetime.datetime.now()
+                            self.last_annotation_time[annotation_key] = default_time
+                            print(f"[LOAD] 生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
+                            print(f"[TIMESTAMP] 来源: 生成的默认时间 (无保存时间戳)")
+                elif annotation_key in self.last_annotation_time:
+                    print(f"[LOAD] 使用内存中的时间戳: {annotation_key}")
+                    print(f"[TIMESTAMP] 来源: 内存缓存")
+                else:
+                    # 手动标注但没有时间戳，生成一个默认时间戳
+                    default_time = datetime.datetime.now()
+                    self.last_annotation_time[annotation_key] = default_time
+                    print(f"[LOAD] 为手动标注生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
+                    print(f"[TIMESTAMP] 来源: 生成的默认时间 (手动标注无时间戳)")
+            
+            # 同步到增强标注面板 - 改进逻辑以处理所有手动标注
             if self.enhanced_annotation_panel:
-                # 检查是否有增强标注数据
+                print(f"[DEBUG] 检查增强标注面板同步 - 孔位{self.current_hole_number}")
+                print(f"[DEBUG] 标注源: {existing_ann.annotation_source}")
+                print(f"[DEBUG] 是否有enhanced_data属性: {hasattr(existing_ann, 'enhanced_data')}")
+                if hasattr(existing_ann, 'enhanced_data'):
+                    print(f"[DEBUG] enhanced_data内容: {existing_ann.enhanced_data}")
+                    print(f"[DEBUG] enhanced_data类型: {type(existing_ann.enhanced_data)}")
+                    print(f"[DEBUG] enhanced_data是否为空: {not existing_ann.enhanced_data}")
+                    # Added: More detailed analysis of enhanced_data structure
+                    if existing_ann.enhanced_data:
+                        if isinstance(existing_ann.enhanced_data, dict):
+                            print(f"[DEBUG] enhanced_data包含字段: {list(existing_ann.enhanced_data.keys())}")
+                            if 'feature_combination' in existing_ann.enhanced_data:
+                                fc_data = existing_ann.enhanced_data['feature_combination']
+                                print(f"[DEBUG] feature_combination数据: 级别={fc_data.get('growth_level')}, 模式={fc_data.get('growth_pattern')}")
+                        else:
+                            print(f"[WARNING] enhanced_data不是字典类型: {type(existing_ann.enhanced_data)}")
+                
+                # 首先检查是否有增强标注数据
+                # 改进逻辑：如果有enhanced_data，就认为是增强标注，不管annotation_source是什么
                 if (hasattr(existing_ann, 'enhanced_data') and 
-                    existing_ann.enhanced_data and 
-                    existing_ann.annotation_source == 'enhanced_manual'):
+                    existing_ann.enhanced_data):
+                    print(f"[DEBUG] 条件满足，进入增强数据恢复流程")
                     try:
                         from models.enhanced_annotation import FeatureCombination
                         enhanced_data = existing_ann.enhanced_data
+                        
+                        print(f"[DEBUG] 原始增强数据: {enhanced_data}")
                         
                         # 确保enhanced_data是字典格式
                         if isinstance(enhanced_data, dict):
                             # 检查是否包含feature_combination数据
                             if 'feature_combination' in enhanced_data:
                                 combination_data = enhanced_data['feature_combination']
+                                print(f"[DEBUG] 特征组合数据: {combination_data}")
                             else:
                                 combination_data = enhanced_data
+                                print(f"[DEBUG] 直接使用增强数据: {combination_data}")
                             
+                            print(f"[DEBUG] 尝试从字典创建特征组合...")
                             combination = FeatureCombination.from_dict(combination_data)
-                            self.enhanced_annotation_panel.set_feature_combination(combination)
+                            print(f"[DEBUG] 创建的特征组合: 级别={combination.growth_level}, 模式={combination.growth_pattern}")
                             
-                            # 同步时间戳到内存
-                            if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                                import datetime
-                                try:
-                                    if isinstance(existing_ann.timestamp, str):
-                                        dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                                    else:
-                                        dt = existing_ann.timestamp
-                                    annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
-                                    self.last_annotation_time[annotation_key] = dt
-                                except Exception as e:
-                                    print(f"时间戳解析失败: {e}")
+                            self.enhanced_annotation_panel.set_feature_combination(combination)
+                            print(f"[LOAD] 已恢复增强标注数据 - 级别: {combination.growth_level}, 模式: {combination.growth_pattern}")
                         else:
-                            print(f"增强数据格式错误: {type(enhanced_data)}")
+                            print(f"[ERROR] 增强数据格式错误: {type(enhanced_data)}")
                             self.sync_basic_to_enhanced_annotation(existing_ann)
                     except Exception as e:
-                        print(f"增强标注数据恢复失败: {e}")
+                        print(f"[ERROR] 增强标注数据恢复失败: {e}")
+                        import traceback
+                        traceback.print_exc()
                         # 如果增强数据解析失败，使用基础数据
                         self.sync_basic_to_enhanced_annotation(existing_ann)
-                else:
-                    # 配置导入或其他类型标注，使用基础数据同步到增强面板
+                elif existing_ann.annotation_source in ['enhanced_manual', 'manual']:
+                    # 手动标注但没有增强数据，使用基础数据同步到增强面板
+                    print(f"[LOAD] 同步手动标注({existing_ann.annotation_source})到增强面板")
+                    print(f"[FALLBACK] 由于JSON没有enhanced_data，使用基础数据同步 - 将使用区分性默认模式")
+                    print(f"[FALLBACK] 原始数据: 生长级别={existing_ann.growth_level}, 源={existing_ann.annotation_source}")
                     self.sync_basic_to_enhanced_annotation(existing_ann)
+                else:
+                    # 配置导入标注：不自动同步到增强面板，保持中性状态
+                    print(f"[LOAD] 配置导入标注 - 保持增强面板中性状态")
+                    if self.enhanced_annotation_panel:
+                        # 重置为默认状态，不显示具体模式
+                        self.enhanced_annotation_panel.reset_annotation()
+                        # 但设置正确的生长级别以匹配配置导入的数据
+                        if hasattr(self.enhanced_annotation_panel, 'current_growth_level'):
+                            self.enhanced_annotation_panel.current_growth_level.set(existing_ann.growth_level)
+                        print(f"[LOAD] 配置导入标注 - 只设置生长级别: {existing_ann.growth_level}")
             
             # 设置干扰因素（向后兼容）
             for factor in self.interference_factors:
@@ -849,49 +1006,41 @@ class PanoramicAnnotationGUI:
     def sync_basic_to_enhanced_annotation(self, annotation):
         """将基础标注同步到增强标注面板"""
         try:
-            from models.enhanced_annotation import FeatureCombination, GrowthLevel, GrowthPattern, InterferenceType
+            print(f"[SYNC] 开始同步标注: 级别={annotation.growth_level}, 源={getattr(annotation, 'annotation_source', 'unknown')}")
             
-            # 映射生长级别
-            growth_level_map = {
-                'negative': GrowthLevel.NEGATIVE,
-                'weak_growth': GrowthLevel.WEAK_GROWTH,
-                'positive': GrowthLevel.POSITIVE
-            }
-            
-            growth_level = growth_level_map.get(annotation.growth_level, GrowthLevel.NEGATIVE)
-            
-            # 映射干扰因素
-            interference_map = {
-                'pores': InterferenceType.PORES,
-                'artifacts': InterferenceType.ARTIFACTS,
-                'edge_blur': InterferenceType.EDGE_BLUR,
-                'contamination': InterferenceType.CONTAMINATION,
-                'scratches': InterferenceType.SCRATCHES
-            }
-            
-            interference_factors = set()
-            for factor in annotation.interference_factors:
-                if factor in interference_map:
-                    interference_factors.add(interference_map[factor])
-            
-            # 根据干扰因素推断生长模式
-            growth_pattern = None
-            if not interference_factors:
-                growth_pattern = GrowthPattern.CLEAN
-            
-            # 创建特征组合
-            combination = FeatureCombination(
-                growth_level=growth_level,
-                growth_pattern=growth_pattern,
-                interference_factors=interference_factors,
-                confidence=getattr(annotation, 'confidence', 1.0)
-            )
-            
-            # 设置到增强标注面板
-            self.enhanced_annotation_panel.set_feature_combination(combination)
+            # 使用新的可区分默认模式初始化面板
+            if self.enhanced_annotation_panel:
+                self.enhanced_annotation_panel.initialize_with_defaults(
+                    growth_level=annotation.growth_level,
+                    microbe_type=annotation.microbe_type
+                )
+                
+                # 处理干扰因素（如果有的话）
+                if annotation.interference_factors:
+                    from models.enhanced_annotation import InterferenceType
+                    
+                    # 映射干扰因素
+                    interference_map = {
+                        'pores': InterferenceType.PORES,
+                        'artifacts': InterferenceType.ARTIFACTS,
+                        'edge_blur': InterferenceType.EDGE_BLUR,
+                        'contamination': InterferenceType.CONTAMINATION,
+                        'scratches': InterferenceType.SCRATCHES
+                    }
+                    
+                    for factor in annotation.interference_factors:
+                        if factor in interference_map:
+                            mapped_factor = interference_map[factor]
+                            if mapped_factor in self.enhanced_annotation_panel.interference_vars:
+                                self.enhanced_annotation_panel.interference_vars[mapped_factor].set(True)
+                                print(f"[SYNC] 设置干扰因素: {factor}")
+                
+                print(f"[SYNC] 使用可区分默认模式同步完成")
             
         except Exception as e:
-            print(f"同步基础标注到增强面板失败: {e}")
+            print(f"[ERROR] 同步基础标注到增强面板失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def load_config_annotations(self):
         """加载配置文件中的标注数据"""
@@ -963,6 +1112,7 @@ class PanoramicAnnotationGUI:
     
     def save_current_annotation(self):
         """保存当前标注并跳转到下一个"""
+        print(f"[SAVE] 用户点击保存并下一个 - 调用 save_current_annotation 方法")
         try:
             if self.save_current_annotation_internal():
                 # 自动跳转到下一个
@@ -1066,6 +1216,8 @@ class PanoramicAnnotationGUI:
                 if hole_number >= start_hole:
                     self.current_slice_index = i
                     self.load_current_slice()
+                    # 导航后强制刷新统计和状态
+                    self.root.after(10, self._force_navigation_refresh)
                     self.update_progress()
                     return
         
@@ -1086,6 +1238,8 @@ class PanoramicAnnotationGUI:
             if hole_number >= start_hole:
                 self.current_slice_index = i
                 self.load_current_slice()
+                # 导航后强制刷新统计和状态
+                self.root.after(10, self._force_navigation_refresh)
                 self.update_progress()
                 return
         
@@ -1103,46 +1257,93 @@ class PanoramicAnnotationGUI:
     
     def save_current_annotation_internal(self):
         """内部保存方法，不自动跳转"""
+        print(f"[SAVE] 进入 save_current_annotation_internal 方法")
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            print(f"[SAVE] 早期退出: 没有切片文件或索引超出范围")
             return
         
         try:
             current_file = self.slice_files[self.current_slice_index]
             
             # 使用增强标注模式 - 唯一的标注方式
-            feature_combination = self.enhanced_annotation_panel.get_current_feature_combination()
-            
-            # 创建增强标注对象
-            enhanced_annotation = EnhancedPanoramicAnnotation(
-                image_path=current_file['filepath'],
-                bbox=[0, 0, 70, 70],
-                panoramic_image_id=current_file.get('panoramic_id'),
-                hole_number=self.current_hole_number,
-                microbe_type=self.current_microbe_type.get(),
-                feature_combination=feature_combination,
-                annotation_source="enhanced_manual",
-                is_confirmed=True
-            )
-            
-            # 转换为训练标签
-            training_label = enhanced_annotation.get_training_label()
-            
-            # 创建兼容的PanoramicAnnotation对象用于显示
-            annotation = PanoramicAnnotation.from_filename(
-                current_file['filename'],
-                label=training_label,
-                bbox=[0, 0, 70, 70],
-                confidence=feature_combination.confidence,  # 使用设置的置信度
-                microbe_type=self.current_microbe_type.get(),
-                growth_level=feature_combination.growth_level.value,
-                interference_factors=[f.value for f in feature_combination.interference_factors],
-                annotation_source="enhanced_manual",
-                is_confirmed=True,
-                panoramic_id=current_file.get('panoramic_id')
-            )
-            
-            # 存储增强标注数据
-            annotation.enhanced_data = enhanced_annotation.to_dict()
+            print(f"[SAVE] 检查增强标注面板: hasattr={hasattr(self, 'enhanced_annotation_panel')}, not None={getattr(self, 'enhanced_annotation_panel', None) is not None}")
+            if hasattr(self, 'enhanced_annotation_panel') and self.enhanced_annotation_panel:
+                try:
+                    feature_combination = self.enhanced_annotation_panel.get_current_feature_combination()
+                    print(f"[SAVE] 准备保存增强标注: {feature_combination.growth_level} [{feature_combination.confidence:.2f}]")
+                except Exception as e:
+                    print(f"[ERROR] 获取特征组合失败: {e}")
+                    raise
+                
+                # 创建增强标注对象
+                
+                enhanced_annotation = EnhancedPanoramicAnnotation(
+                    image_path=current_file['filepath'],
+                    bbox=[0, 0, 70, 70],
+                    panoramic_image_id=current_file.get('panoramic_id'),
+                    hole_number=self.current_hole_number,
+                    microbe_type=self.current_microbe_type.get(),
+                    feature_combination=feature_combination,
+                    annotation_source="enhanced_manual",
+                    is_confirmed=True
+                )
+                
+                # 转换为训练标签
+                training_label = enhanced_annotation.get_training_label()
+                print(f"[SAVE] 训练标签: {training_label}")
+                
+                # 创建兼容的PanoramicAnnotation对象用于显示
+                annotation = PanoramicAnnotation.from_filename(
+                    current_file['filename'],
+                    label=training_label,
+                    bbox=[0, 0, 70, 70],
+                    confidence=feature_combination.confidence,
+                    microbe_type=self.current_microbe_type.get(),
+                    growth_level=feature_combination.growth_level.value if hasattr(feature_combination.growth_level, 'value') else feature_combination.growth_level,
+                    interference_factors=[f.value if hasattr(f, 'value') else f for f in feature_combination.interference_factors],
+                    annotation_source="enhanced_manual",
+                    is_confirmed=True,
+                    panoramic_id=current_file.get('panoramic_id')
+                )
+                
+                # 存储增强标注数据
+                try:
+                    enhanced_data_dict = enhanced_annotation.to_dict()
+                    print(f"[SAVE] enhanced_annotation.to_dict() 成功: {len(str(enhanced_data_dict))} 字符")
+                    annotation.enhanced_data = enhanced_data_dict
+                    print(f"[SAVE] enhanced_data 赋值成功")
+                except Exception as e:
+                    print(f"[ERROR] enhanced_data 赋值失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # 继续执行，但不设置 enhanced_data
+                
+                print(f"[SAVE] 保存增强数据完成")
+                
+                # 验证enhanced_data是否正确设置
+                if hasattr(annotation, 'enhanced_data') and annotation.enhanced_data:
+                    print(f"[SAVE] ✓ enhanced_data设置成功")
+                    if 'feature_combination' in annotation.enhanced_data:
+                        fc_data = annotation.enhanced_data['feature_combination']
+                        print(f"[VERIFY] 保存的特征: 级别={fc_data.get('growth_level')}, 模式={fc_data.get('growth_pattern')}")
+                else:
+                    print(f"[SAVE] ❌ enhanced_data设置失败或为空")
+                    
+            else:
+                # 基础标注模式（向后兼容）
+                print(f"[SAVE] 使用基础标注模式（无增强面板）")
+                annotation = PanoramicAnnotation.from_filename(
+                    current_file['filename'],
+                    label=self.current_growth_level.get(),
+                    bbox=[0, 0, 70, 70],
+                    confidence=1.0,
+                    microbe_type=self.current_microbe_type.get(),
+                    growth_level=self.current_growth_level.get(),
+                    interference_factors=[],
+                    annotation_source="enhanced_manual",
+                    is_confirmed=True,
+                    panoramic_id=current_file.get('panoramic_id')
+                )
             
             # 添加时间戳
             import datetime
@@ -1162,14 +1363,33 @@ class PanoramicAnnotationGUI:
             # 添加新标注
             self.current_dataset.add_annotation(annotation)
             
-            # 记录标注时间
+            # 记录标泣时间
             import datetime
+            current_time = datetime.datetime.now()
             annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
-            self.last_annotation_time[annotation_key] = datetime.datetime.now()
+            self.last_annotation_time[annotation_key] = current_time
+            print(f"[SAVE] 记录标注时间: {annotation_key} -> {current_time.strftime('%m-%d %H:%M:%S')}")
             
             # 更新显示
             self.load_panoramic_image()
             self.update_statistics()
+            self.update_slice_info_display()
+            self.root.update_idletasks()
+            self.root.update()
+            
+            # 验证标注是否正确保存
+            saved_ann = self.current_dataset.get_annotation_by_hole(self.current_panoramic_id, self.current_hole_number)
+            if saved_ann:
+                print(f"[VERIFY] 标注已保存 - 源: {saved_ann.annotation_source}, 级别: {saved_ann.growth_level}")
+                if hasattr(saved_ann, 'enhanced_data') and saved_ann.enhanced_data:
+                    print(f"[VERIFY] enhanced_data内容: True")
+                    if 'feature_combination' in saved_ann.enhanced_data:
+                        fc = saved_ann.enhanced_data['feature_combination']
+                        print(f"[VERIFY] 保存的特征: 级别={fc.get('growth_level')}, 模式={fc.get('growth_pattern')}")
+                else:
+                    print(f"[VERIFY] enhanced_data为空: {type(getattr(saved_ann, 'enhanced_data', None))}")
+            
+            print("[SAVE] 保存后更新完成")
             
             # 重置修改标记
             self.current_annotation_modified = False
@@ -1308,6 +1528,8 @@ class PanoramicAnnotationGUI:
             if file_info['hole_number'] == hole_number:
                 self.current_slice_index = i
                 self.load_current_slice()
+                # 导航后强制刷新统计和状态
+                self.root.after(10, self._force_navigation_refresh)
                 self.update_progress()
                 return
     
@@ -1437,6 +1659,91 @@ class PanoramicAnnotationGUI:
         
         return count
     
+    def update_slice_info_display(self):
+        """更新切片信息显示，包括标注状态和时间戳"""
+        if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            return
+            
+        current_file = self.slice_files[self.current_slice_index]
+        hole_label = self.hole_manager.get_hole_label(self.current_hole_number)
+        annotation_status = self.get_annotation_status_text()
+        
+        # 更新切片信息标签
+        self.slice_info_label.config(text=f"文件: {current_file['filename']}\n孔位: {hole_label} ({self.current_hole_number})\n{annotation_status}")
+        
+        # Only log significant info changes to reduce spam
+        if not hasattr(self, '_last_info_display') or self._last_info_display != annotation_status:
+            print(f"[INFO] 更新切片信息显示: {annotation_status}")
+            self._last_info_display = annotation_status
+        
+        # 刷新显示
+        self.root.update_idletasks()
+    
+    def get_annotation_status_text(self):
+        """获取标注状态文本，包含日期时间"""
+        existing_ann = self.current_dataset.get_annotation_by_hole(
+            self.current_panoramic_id, 
+            self.current_hole_number
+        )
+        
+        print(f"[STATUS] 检查标注状态 - 孔位{self.current_hole_number}, 有标注: {existing_ann is not None}")
+        if existing_ann:
+            source = getattr(existing_ann, 'annotation_source', 'unknown')
+            has_enhanced_data = hasattr(existing_ann, 'enhanced_data') and existing_ann.enhanced_data
+            # Only log details for first few or when there's an issue
+            if not hasattr(self, '_status_logged_count'):
+                self._status_logged_count = 0
+            if self._status_logged_count < 3:  # Limit logging
+                print(f"[STATUS] 标注详情 - 源: {source}, 级别: {existing_ann.growth_level}, 增强数据: {has_enhanced_data}")
+                self._status_logged_count += 1
+        
+        if existing_ann:
+            # Check if this is an enhanced annotation using multiple criteria
+            source = getattr(existing_ann, 'annotation_source', 'unknown')
+            has_enhanced_data = hasattr(existing_ann, 'enhanced_data') and existing_ann.enhanced_data
+            
+            # Enhanced if: enhanced_manual source OR any manual source (backward compatibility)
+            has_enhanced = (
+                source == 'enhanced_manual' or 
+                source == 'manual'  # All manual annotations treated as enhanced
+            )
+            
+            print(f"[STATUS] 标注源: {source}, 增强标注: {has_enhanced}, 时间戳: {getattr(existing_ann, 'timestamp', 'None')}")
+            
+            if has_enhanced:
+                # 增强标注 - 显示已标注状态
+                annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                if annotation_key in self.last_annotation_time:
+                    import datetime
+                    datetime_str = self.last_annotation_time[annotation_key].strftime("%m-%d %H:%M:%S")
+                    status_text = f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
+                    return status_text
+                else:
+                    # 尝试从标注对象获取时间戳
+                    if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
+                        import datetime
+                        try:
+                            if isinstance(existing_ann.timestamp, str):
+                                dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
+                            else:
+                                dt = existing_ann.timestamp
+                            datetime_str = dt.strftime("%m-%d %H:%M:%S")
+                            # 同步到内存
+                            self.last_annotation_time[annotation_key] = dt
+                            status_text = f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
+                            return status_text
+                        except Exception as e:
+                            print(f"[ERROR] 时间戳解析失败: {e}")
+                status_text = f"状态: 已标注 - {existing_ann.growth_level}"
+                return status_text
+            else:
+                # 配置导入或其他类型 - 显示为配置导入状态
+                status_text = f"状态: 配置导入 - {existing_ann.growth_level}"
+                return status_text
+        else:
+            status_text = "状态: 未标注"
+            return status_text
+    
     def update_progress(self):
         """更新进度显示"""
         if self.slice_files:
@@ -1462,28 +1769,52 @@ class PanoramicAnnotationGUI:
             'config_only': 0          # 仅有配置文件标注
         }
         
+        print(f"[STATS] 开始统计更新，总文件数: {stats['total']}")
+        
+        enhanced_count = 0
+        config_count = 0
+        
         for file_info in self.slice_files:
             panoramic_id = file_info.get('panoramic_id', '')
             hole_number = file_info.get('hole_number', 0)
             
             annotation = self.current_dataset.get_annotation_by_hole(panoramic_id, hole_number)
             if annotation:
-                # 检查是否有增强标注数据
-                has_enhanced = (hasattr(annotation, 'enhanced_data') and 
-                              annotation.enhanced_data and 
-                              annotation.annotation_source == 'enhanced_manual')
+                # Enhanced classification logic with improved backward compatibility
+                source = getattr(annotation, 'annotation_source', 'unknown')
+                has_enhanced_data = hasattr(annotation, 'enhanced_data') and annotation.enhanced_data
                 
-                if has_enhanced:
-                    # 只有增强标注才算真正已标注
+                # Classify as enhanced if:
+                # 1. Source is enhanced_manual, OR
+                # 2. Source is manual (for backward compatibility - treat all manual annotations as enhanced), OR
+                # 3. Source is manual AND has enhanced_data
+                is_enhanced = (
+                    source == 'enhanced_manual' or 
+                    source == 'manual' or  # All manual annotations treated as enhanced for backward compatibility
+                    (source == 'manual' and has_enhanced_data)
+                )
+                
+                if is_enhanced:
+                    # Enhanced annotation counts toward statistics
                     stats['enhanced_annotated'] += 1
+                    enhanced_count += 1
                     growth_level = annotation.growth_level
                     if growth_level in stats:
                         stats[growth_level] += 1
+                        # Limit debug output to avoid spam
+                        if enhanced_count <= 2:  # Only log first 2 enhanced annotations
+                            print(f"[STATS] 统计增强标注 - 孔位{hole_number}, 级别: {growth_level}, 源: {source}")
                 else:
-                    # 仅有配置文件导入的标注，不算已标注
+                    # Config import or other types
                     stats['config_only'] += 1
+                    config_count += 1
         
         stats['unannotated'] = stats['total'] - stats['enhanced_annotated']
+        
+        # Only log summary statistics to reduce console spam
+        print(f"[STATS] 统计结果 - 增强标注: {enhanced_count}, 配置导入: {config_count}, 未标注: {stats['unannotated']}")
+        if enhanced_count > 0 or config_count > 0:  # Only log details when there are annotations
+            print(f"[STATS] 分类统计 - 阴性: {stats['negative']}, 弱生长: {stats['weak_growth']}, 阳性: {stats['positive']}")
         
         # 更新显示
         if stats['config_only'] > 0:
@@ -1575,13 +1906,167 @@ class PanoramicAnnotationGUI:
             # 更新显示
             self.load_panoramic_image()
             self.update_statistics()
-            self.load_existing_annotation()  # 重新加载当前切片的标注
+            
+            # 重新加载当前切片的标注并完整刷新当前孔状态
+            self.load_existing_annotation()
+            
+            # 强制刷新切片信息显示和增强标注面板
+            self.update_slice_info_display()
+            
+            # 确保时间戳正确同步到内存 - 修复加载时时间戳显示问题
+            self._force_timestamp_sync_after_load()
+            
+            # 延迟验证刷新 - 确保时间戳同步后再进行最终验证
+            self.root.after(50, self._verify_timestamp_sync_after_load)
+            
+            # 确保增强标注面板状态同步 - 强制完整刷新
+            if self.enhanced_annotation_panel:
+                current_ann = self.current_dataset.get_annotation_by_hole(
+                    self.current_panoramic_id, 
+                    self.current_hole_number
+                )
+                if current_ann:
+                    print(f"[LOAD] 加载标注后强制刷新增强面板 - 孔位{self.current_hole_number}")
+                    print(f"[LOAD] 标注源: {getattr(current_ann, 'annotation_source', 'unknown')}")
+                    
+                    # 先重置面板再重新设置，确保完全刷新
+                    self.enhanced_annotation_panel.reset_annotation()
+                    self.root.update_idletasks()
+                    
+                    # 重新触发完整的标注加载流程
+                    self.load_existing_annotation()
+                    self.root.update_idletasks()
+                    
+                    # 最后一次强制UI刷新确保增强面板完全同步
+                    self.root.update()
+                    
+                    print(f"[LOAD] 增强面板强制刷新完成 - 孔位{self.current_hole_number}")
+                else:
+                    print(f"[LOAD] 当前孔位{self.current_hole_number}无标注，重置增强面板")
+                    self.enhanced_annotation_panel.reset_annotation()
+            
+            # 多重UI刷新确保状态完全更新
+            self.root.update_idletasks()
+            self.root.update()
+            
+            # 延迟验证刷新 - 确保所有异步更新完成
+            self.root.after(100, self._verify_load_refresh)
+            
+            print(f"[LOAD] 加载标注完成，当前孔位状态已刷新")
             
             messagebox.showinfo("成功", f"已加载 {merge_count} 个标注进行review")
             self.update_status(f"已加载标注文件: {filename} ({merge_count} 个标注)")
             
         except Exception as e:
             messagebox.showerror("错误", f"加载标注文件失败: {str(e)}")
+    
+    def _verify_timestamp_sync_after_load(self):
+        """验证时间戳同步状态 - 确保加载后显示正确的时间戳"""
+        try:
+            print(f"[VERIFY_TIMESTAMP] 验证孔位{self.current_hole_number}的时间戳同步状态")
+            
+            # 获取当前孔位的标注
+            current_ann = self.current_dataset.get_annotation_by_hole(
+                self.current_panoramic_id, 
+                self.current_hole_number
+            )
+            
+            if current_ann:
+                annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                
+                # 检查内存中是否有时间戳
+                has_memory_timestamp = annotation_key in self.last_annotation_time
+                has_annotation_timestamp = hasattr(current_ann, 'timestamp') and current_ann.timestamp
+                
+                print(f"[VERIFY_TIMESTAMP] 内存中有时间戳: {has_memory_timestamp}")
+                print(f"[VERIFY_TIMESTAMP] 标注对象有时间戳: {has_annotation_timestamp}")
+                
+                if has_memory_timestamp:
+                    memory_time = self.last_annotation_time[annotation_key]
+                    print(f"[VERIFY_TIMESTAMP] 内存时间戳: {memory_time.strftime('%m-%d %H:%M:%S')}")
+                elif has_annotation_timestamp:
+                    print(f"[VERIFY_TIMESTAMP] 标注对象时间戳: {current_ann.timestamp}")
+                    # 如果内存中没有但标注对象有，再次强制同步
+                    self._force_timestamp_sync_after_load()
+                
+                # 最终刷新显示
+                self.update_slice_info_display()
+                print(f"[VERIFY_TIMESTAMP] 验证完成，刷新显示")
+            else:
+                print(f"[VERIFY_TIMESTAMP] 孔位{self.current_hole_number}无标注")
+                
+        except Exception as e:
+            print(f"[ERROR] 时间戳验证失败: {e}")
+    
+    def _force_timestamp_sync_after_load(self):
+        """强制时间戳同步 - 修复加载标注后时间戳显示问题"""
+        try:
+            print(f"[FORCE_SYNC] 强制同步孔位{self.current_hole_number}的时间戳")
+            
+            # 获取当前孔位的标注
+            current_ann = self.current_dataset.get_annotation_by_hole(
+                self.current_panoramic_id, 
+                self.current_hole_number
+            )
+            
+            if current_ann and hasattr(current_ann, 'timestamp') and current_ann.timestamp:
+                import datetime
+                annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                
+                try:
+                    # 解析时间戳
+                    if isinstance(current_ann.timestamp, str):
+                        dt = datetime.datetime.fromisoformat(current_ann.timestamp.replace('Z', '+00:00'))
+                    else:
+                        dt = current_ann.timestamp
+                    
+                    # 强制更新内存中的时间戳
+                    self.last_annotation_time[annotation_key] = dt
+                    print(f"[FORCE_SYNC] 成功同步时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}")
+                    print(f"[FORCE_SYNC] 来源: JSON文件中的保存时间戳")
+                    
+                    # 再次刷新显示以确保时间戳正确显示
+                    self.update_slice_info_display()
+                    
+                except Exception as e:
+                    print(f"[FORCE_SYNC] 时间戳解析失败: {e}")
+            else:
+                print(f"[FORCE_SYNC] 孔位{self.current_hole_number}无有效时间戳")
+                
+        except Exception as e:
+            print(f"[ERROR] 强制时间戳同步失败: {e}")
+    
+    def _verify_load_refresh(self):
+        """验证加载后的刷新状态，确保当前孔位完全同步"""
+        try:
+            print(f"[VERIFY_LOAD] 验证孔位{self.current_hole_number}刷新状态")
+            
+            # 再次检查当前孔位的标注状态
+            current_ann = self.current_dataset.get_annotation_by_hole(
+                self.current_panoramic_id, 
+                self.current_hole_number
+            )
+            
+            if current_ann and self.enhanced_annotation_panel:
+                print(f"[VERIFY_LOAD] 发现当前孔位有标注，验证增强面板同步状态")
+                
+                # 检查增强面板状态是否正确
+                if hasattr(current_ann, 'enhanced_data') and current_ann.enhanced_data:
+                    print(f"[VERIFY_LOAD] 验证增强数据同步状态")
+                    # 确保增强数据已正确加载到面板
+                    current_combination = self.enhanced_annotation_panel.get_current_feature_combination()
+                    print(f"[VERIFY_LOAD] 当前面板状态: {current_combination.growth_level}_{current_combination.growth_pattern}")
+                
+                # 强制一次最终的状态更新
+                self.update_slice_info_display()
+                self.update_statistics()
+                
+                print(f"[VERIFY_LOAD] 孔位{self.current_hole_number}状态验证完成")
+            else:
+                print(f"[VERIFY_LOAD] 孔位{self.current_hole_number}无需验证或无增强面板")
+                
+        except Exception as e:
+            print(f"[ERROR] 加载后验证失败: {e}")
     
     def batch_import_annotations(self):
         """批量导入标注"""
@@ -1620,6 +2105,40 @@ class PanoramicAnnotationGUI:
                 # 更新显示
                 self.load_panoramic_image()
                 self.update_statistics()
+                
+                # 刷新当前孔状态（如果当前孔被更新）
+                self.load_existing_annotation()
+                self.update_slice_info_display()
+                
+                # 确保增强标注面板状态同步 - 强制完整刷新
+                if self.enhanced_annotation_panel:
+                    current_ann = self.current_dataset.get_annotation_by_hole(
+                        self.current_panoramic_id, 
+                        self.current_hole_number
+                    )
+                    if current_ann:
+                        print(f"[BATCH_IMPORT] 批量导入后强制刷新增强面板 - 孔位{self.current_hole_number}")
+                        
+                        # 先重置面板再重新设置，确保完全刷新
+                        self.enhanced_annotation_panel.reset_annotation()
+                        self.root.update_idletasks()
+                        
+                        # 重新触发完整的标注加载流程
+                        self.load_existing_annotation()
+                        self.root.update_idletasks()
+                        
+                        print(f"[BATCH_IMPORT] 增强面板强制刷新完成 - 孔位{self.current_hole_number}")
+                    else:
+                        print(f"[BATCH_IMPORT] 当前孔位{self.current_hole_number}无标注，重置增强面板")
+                        self.enhanced_annotation_panel.reset_annotation()
+                
+                # 强制UI刷新
+                self.root.update_idletasks()
+                self.root.update()
+                
+                # 延迟验证刷新
+                self.root.after(100, self._verify_load_refresh)
+                
                 self.update_status(f"成功导入 {imported_count} 个标注")
                 
             except Exception as e:
@@ -1763,45 +2282,7 @@ class PanoramicAnnotationGUI:
         else:
             messagebox.showerror("错误", f"未找到全景图 {panoramic_id} 的切片文件")
     
-    def save_current_annotation_internal(self):
-        """内部保存方法，不自动跳转"""
-        if not self.slice_files or self.current_slice_index >= len(self.slice_files):
-            return False
-        
-        try:
-            current_file = self.slice_files[self.current_slice_index]
-            
-            # 使用增强标注模式
-            if hasattr(self, 'enhanced_annotation_panel') and self.enhanced_annotation_panel:
-                feature_combination = self.enhanced_annotation_panel.get_current_feature_combination()
-                
-                # 创建增强标注对象
-                enhanced_annotation = EnhancedPanoramicAnnotation(
-                    image_path=current_file['filepath'],
-                    bbox=[0, 0, 70, 70],
-                    panoramic_image_id=current_file.get('panoramic_id'),
-                    hole_number=current_file.get('hole_number'),
-                    hole_row=self.hole_manager.get_row_from_hole_number(current_file.get('hole_number', 1)),
-                    hole_col=self.hole_manager.get_col_from_hole_number(current_file.get('hole_number', 1)),
-                    feature_combination=feature_combination
-                )
-                
-                # 移除现有标注
-                existing_ann = self.current_dataset.get_annotation_by_hole(
-                    current_file.get('panoramic_id'), 
-                    current_file.get('hole_number')
-                )
-                if existing_ann:
-                    self.current_dataset.annotations.remove(existing_ann)
-                
-                # 添加新标注
-                self.current_dataset.add_annotation(enhanced_annotation)
-                return True
-            
-        except Exception as e:
-            print(f"保存标注失败: {e}")
-            print(f"保存标注失败: {e}")
-            return False
+
 
 
 def main():

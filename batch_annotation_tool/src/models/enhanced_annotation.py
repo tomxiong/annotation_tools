@@ -72,7 +72,7 @@ class FeatureCombination:
             'growth_pattern': self.growth_pattern.value if self.growth_pattern else None,
             'interference_factors': [f.value for f in self.interference_factors],
             'confidence': self.confidence,
-            'label': self.to_label
+            'label': self.to_label()  # Call the method, not reference it
         }
     
     @classmethod
@@ -113,7 +113,11 @@ class EnhancedPanoramicAnnotation:
         self.metadata = metadata or {}
                 
         # 向后兼容性字段
-        self.label = self.feature_combination.to_label
+        # Handle both method and property for to_label
+        if hasattr(self.feature_combination.to_label, '__call__'):
+            self.label = self.feature_combination.to_label()  # Method call
+        else:
+            self.label = self.feature_combination.to_label  # Property access
         self.confidence = self.feature_combination.confidence
         # 处理growth_level - 可能是字符串或枚举
         if hasattr(self.feature_combination.growth_level, 'value'):
@@ -132,10 +136,24 @@ class EnhancedPanoramicAnnotation:
         """更新特征组合"""
         self.feature_combination = feature_combination
         # 同步更新兼容性字段
-        self.label = feature_combination.to_label
+        # Handle both method and property for to_label
+        if hasattr(feature_combination.to_label, '__call__'):
+            self.label = feature_combination.to_label()  # Method call
+        else:
+            self.label = feature_combination.to_label  # Property access
         self.confidence = feature_combination.confidence
-        self.growth_level = feature_combination.growth_level.value
-        self.interference_factors = [f.value for f in feature_combination.interference_factors]
+        # 处理growth_level - 可能是字符串或枚举
+        if hasattr(feature_combination.growth_level, 'value'):
+            self.growth_level = feature_combination.growth_level.value
+        else:
+            self.growth_level = feature_combination.growth_level
+        # 处理interference_factors - 可能是字符串集合或枚举集合
+        self.interference_factors = []
+        for f in feature_combination.interference_factors:
+            if hasattr(f, 'value'):
+                self.interference_factors.append(f.value)
+            else:
+                self.interference_factors.append(f)
     
     def add_interference_factor(self, factor: InterferenceType):
         """添加干扰因素"""
@@ -154,7 +172,11 @@ class EnhancedPanoramicAnnotation:
     
     def _sync_fields(self):
         """同步兼容性字段"""
-        self.label = self.feature_combination.to_label
+        # Handle both method and property for to_label
+        if hasattr(self.feature_combination.to_label, '__call__'):
+            self.label = self.feature_combination.to_label()  # Method call
+        else:
+            self.label = self.feature_combination.to_label  # Property access
         # 处理interference_factors - 可能是字符串集合或枚举集合
         self.interference_factors = []
         for f in self.feature_combination.interference_factors:
@@ -165,11 +187,19 @@ class EnhancedPanoramicAnnotation:
         
     def get_training_label(self) -> str:
         """获取训练用标签"""
-        return self.feature_combination.to_label
+        # Handle both method and property for to_label
+        if hasattr(self.feature_combination.to_label, '__call__'):
+            return self.feature_combination.to_label()  # Method call
+        else:
+            return self.feature_combination.to_label  # Property access
     
     def get_simple_label(self) -> str:
         """获取简化标签（向后兼容）"""
-        return self.feature_combination.growth_level.value
+        # 处理growth_level - 可能是字符串或枚举
+        if hasattr(self.feature_combination.growth_level, 'value'):
+            return self.feature_combination.growth_level.value
+        else:
+            return self.feature_combination.growth_level
     
     def get_detailed_description(self) -> str:
         """获取详细描述"""
@@ -383,7 +413,11 @@ class TrainingDataGenerator:
                         feature_combo = FeatureCombination(
                             growth_level, growth_pattern, interference_combo
                         )
-                        extended_labels.append(feature_combo.to_label)
+                        # Handle both method and property for to_label
+                        if hasattr(feature_combo.to_label, '__call__'):
+                            extended_labels.append(feature_combo.to_label())  # Method call
+                        else:
+                            extended_labels.append(feature_combo.to_label)  # Property access
         
         # 创建编码映射
         all_labels = base_labels + extended_labels

@@ -33,7 +33,9 @@ class AnnotationManager:
     
     def save_current_annotation_internal(self):
         """内部保存方法，不自动跳转"""
+        print(f"[SAVE] annotation_manager.save_current_annotation_internal 被调用")
         if not self.gui.slice_files or self.gui.current_slice_index >= len(self.gui.slice_files):
+            print(f"[SAVE] 早期退出: 没有切片文件或索引超出范围")
             return False
         
         try:
@@ -43,19 +45,13 @@ class AnnotationManager:
             if hasattr(self.gui, 'enhanced_annotation_panel') and self.gui.enhanced_annotation_panel:
                 try:
                     feature_combination = self.gui.enhanced_annotation_panel.get_current_feature_combination()
-                    print(f"获取特征组合成功: {feature_combination}")
-                    print(f"growth_level类型: {type(feature_combination.growth_level)}")
-                    print(f"confidence类型: {type(feature_combination.confidence)}")
+                    print(f"[SAVE] 准备保存增强标注: {feature_combination.growth_level} [{feature_combination.confidence:.2f}]")
                 except Exception as e:
-                    print(f"获取特征组合失败: {e}")
+                    print(f"[ERROR] 获取特征组合失败: {e}")
                     raise
                 
                 # 创建增强标注对象
-                # 创建增强标注对象
                 from models.enhanced_annotation import EnhancedPanoramicAnnotation
-                print(f"准备创建增强标注对象...")
-                print(f"microbe_type: {self.gui.current_microbe_type.get()}")
-                print(f"microbe_type类型: {type(self.gui.current_microbe_type.get())}")
                 
                 enhanced_annotation = EnhancedPanoramicAnnotation(
                     image_path=current_file['filepath'],
@@ -67,21 +63,16 @@ class AnnotationManager:
                     annotation_source="enhanced_manual",
                     is_confirmed=True
                 )
-                print(f"增强标注对象创建成功")
                 
                 # 转换为训练标签
-                print(f"准备获取训练标签...")
-                # 转换为训练标签
                 try:
-                    print("准备调用 get_training_label...")
                     training_label = enhanced_annotation.get_training_label()
-                    print(f"训练标签获取成功: {training_label}")
+                    print(f"[SAVE] 训练标签: {training_label}")
                 except Exception as e:
-                    print(f"获取训练标签失败: {e}")
+                    print(f"[ERROR] 获取训练标签失败: {e}")
                     import traceback
                     traceback.print_exc()
                     raise
-                print(f"训练标签获取成功: {training_label}")
                 
                 # 创建兼容的PanoramicAnnotation对象用于显示
                 from models.panoramic_annotation import PanoramicAnnotation
@@ -91,17 +82,42 @@ class AnnotationManager:
                     bbox=[0, 0, 70, 70],
                     confidence=feature_combination.confidence,
                     microbe_type=self.gui.current_microbe_type.get(),
-                    growth_level=feature_combination.growth_level,
-                    interference_factors=list(feature_combination.interference_factors),
+                    growth_level=feature_combination.growth_level.value if hasattr(feature_combination.growth_level, 'value') else feature_combination.growth_level,
+                    interference_factors=[f.value if hasattr(f, 'value') else f for f in feature_combination.interference_factors],
                     annotation_source="enhanced_manual",
                     is_confirmed=True,
                     panoramic_id=current_file.get('panoramic_id')
                 )
                 
+                # 验证annotation_source是否正确设置
+                print(f"[SAVE] 创建后的annotation.annotation_source: {annotation.annotation_source}")
+                if annotation.annotation_source != "enhanced_manual":
+                    print(f"[SAVE] ⚠️ annotation_source设置失败，强制修正")
+                    annotation.annotation_source = "enhanced_manual"
+                
+                print(f"[SAVE] 创建增强标注 - 源: enhanced_manual, 生长级别: {feature_combination.growth_level}")
+                print(f"[SAVE] 特征组合详情: 级别={feature_combination.growth_level}, 模式={feature_combination.growth_pattern}")
+                
                 # 存储增强标注数据
-                annotation.enhanced_data = enhanced_annotation.to_dict()
+                enhanced_data_dict = enhanced_annotation.to_dict()
+                annotation.enhanced_data = enhanced_data_dict
+                print(f"[SAVE] 保存增强数据: {len(str(enhanced_data_dict))} 字符")
+                print(f"[SAVE] enhanced_data包含: {list(enhanced_data_dict.keys())}")
+                
+                # 验证enhanced_data是否正确设置
+                if hasattr(annotation, 'enhanced_data') and annotation.enhanced_data:
+                    print(f"[SAVE] ✓ enhanced_data设置成功")
+                    if 'feature_combination' in annotation.enhanced_data:
+                        fc_data = annotation.enhanced_data['feature_combination']
+                        print(f"[VERIFY] 保存的特征: 级别={fc_data.get('growth_level')}, 模式={fc_data.get('growth_pattern')}")
+                    else:
+                        print(f"[SAVE] ⚠️ enhanced_data缺少feature_combination字段")
+                else:
+                    print(f"[SAVE] ❌ enhanced_data设置失败或为空")
+                    
             else:
                 # 基础标注模式（向后兼容）
+                print(f"[SAVE] 使用基础标注模式（无增强面板）")
                 from models.panoramic_annotation import PanoramicAnnotation
                 annotation = PanoramicAnnotation.from_filename(
                     current_file['filename'],
@@ -111,7 +127,7 @@ class AnnotationManager:
                     microbe_type=self.gui.current_microbe_type.get(),
                     growth_level=self.gui.current_growth_level.get(),
                     interference_factors=[],
-                    annotation_source="manual",
+                    annotation_source="enhanced_manual",  # 使用enhanced_manual保持一致性
                     is_confirmed=True,
                     panoramic_id=current_file.get('panoramic_id')
                 )
@@ -133,15 +149,78 @@ class AnnotationManager:
             # 添加新标注
             self.gui.current_dataset.add_annotation(annotation)
             
+            # 立即验证保存的标注源
+            print(f"[SAVE] 添加标注后验证 - annotation.annotation_source: {annotation.annotation_source}")
+            
+            # 再次验证保存到数据集的标注
+            verification_ann = self.gui.current_dataset.get_annotation_by_hole(
+                self.gui.current_panoramic_id, 
+                self.gui.current_hole_number
+            )
+            if verification_ann:
+                print(f"[VERIFY] 从数据集验证 - annotation_source: {verification_ann.annotation_source}")
+                print(f"[VERIFY] 验证enhanced_data: {bool(hasattr(verification_ann, 'enhanced_data') and verification_ann.enhanced_data)}")
+            
             # 记录标注时间
             annotation_key = f"{self.gui.current_panoramic_id}_{self.gui.current_hole_number}"
-            self.gui.last_annotation_time[annotation_key] = datetime.datetime.now()
+            current_time = datetime.datetime.now()
+            self.gui.last_annotation_time[annotation_key] = current_time
+            print(f"[SAVE] 记录标注时间: {annotation_key} -> {current_time.strftime('%m-%d %H:%M:%S')}")
             
-            # 更新显示
+            # 更新显示 - 多重强制刷新确保统计和状态更新
+            print(f"[SAVE] 开始保存后更新 - 孔位{self.gui.current_hole_number}, 标注源: {annotation.annotation_source}")
+            
+            # 首先更新全景图
             if hasattr(self.gui, 'load_panoramic_image'):
                 self.gui.load_panoramic_image()
+            
+            # 第1次统计更新（立即）
             if hasattr(self.gui, 'update_statistics'):
                 self.gui.update_statistics()
+                self.gui.root.update_idletasks()
+                self.gui.root.update()
+                print("[SAVE] 第1次统计更新完成")
+            
+            # 第1次状态更新（立即）
+            if hasattr(self.gui, 'update_slice_info_display'):
+                self.gui.update_slice_info_display()
+                self.gui.root.update_idletasks() 
+                self.gui.root.update()
+                print("[SAVE] 第1次状态更新完成")
+            
+            # 第2次统计更新（确保）
+            if hasattr(self.gui, 'update_statistics'):
+                self.gui.update_statistics()
+                self.gui.root.update_idletasks()
+                print("[SAVE] 第2次统计更新完成")
+            
+            # 第2次状态更新（确保）
+            if hasattr(self.gui, 'update_slice_info_display'):
+                self.gui.update_slice_info_display()
+                self.gui.root.update_idletasks()
+                print("[SAVE] 第2次状态更新完成")
+            
+            # 最终强制刷新
+            self.gui.root.update()
+            
+            # 验证标注是否正确保存
+            saved_ann = self.gui.current_dataset.get_annotation_by_hole(self.gui.current_panoramic_id, self.gui.current_hole_number)
+            if saved_ann:
+                print(f"[VERIFY] 标注已保存 - 源: {saved_ann.annotation_source}, 级别: {saved_ann.growth_level}")
+                print(f"[VERIFY] 是否有enhanced_data: {hasattr(saved_ann, 'enhanced_data')}")
+                if hasattr(saved_ann, 'enhanced_data'):
+                    print(f"[VERIFY] enhanced_data内容: {bool(saved_ann.enhanced_data)}")
+                    if saved_ann.enhanced_data and isinstance(saved_ann.enhanced_data, dict):
+                        print(f"[VERIFY] enhanced_data键: {list(saved_ann.enhanced_data.keys())}")
+                        if 'feature_combination' in saved_ann.enhanced_data:
+                            fc = saved_ann.enhanced_data['feature_combination']
+                            print(f"[VERIFY] 保存的特征: 级别={fc.get('growth_level')}, 模式={fc.get('growth_pattern')}")
+                    else:
+                        print(f"[VERIFY] enhanced_data为空或格式错误: {type(saved_ann.enhanced_data)}")
+            else:
+                print(f"[VERIFY] 警告 - 标注保存失败")
+            
+            print("[SAVE] 保存后更新全部完成")
             
             # 重置修改标记
             self.gui.current_annotation_modified = False
@@ -249,7 +328,7 @@ class AnnotationManager:
                             microbe_type=self.gui.current_microbe_type.get(),
                             growth_level=growth_level,
                             interference_factors=[],
-                            annotation_source="batch_manual",
+                            annotation_source="batch_operation",  # 批量操作标记
                             is_confirmed=True,
                             panoramic_id=self.gui.current_panoramic_id
                         )
