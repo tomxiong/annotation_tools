@@ -20,6 +20,12 @@
 .codebuddy/.ignored_image/b3566671b55c327028eab7fb227bc9fd.png
 .codebuddy/.ignored_image/bc3fae28a56539e193d7fe12aa52d5f7.png
 .codebuddy/.ignored_image/fe880ae97f63dfa55a574bb19c02987d.png
+
+# Project specific
+archive/
+backup_*/
+batch_annotation_tool/
+
 __pycache__/
 *.pyc
 *.pyo
