@@ -2286,15 +2286,17 @@ class PanoramicAnnotationGUI:
 
 
 def main():
-    """主函数 - 启动全景标注工具"""
-    print("启动全景标注工具...")
+    """主函数 - 使用重构后的GUI"""
+    print("启动重构后的全景标注工具...")
     
     try:
-        # 创建主窗口和应用
-        root = tk.Tk()
-        app = PanoramicAnnotationGUI(root)
+        # 导入重构后的GUI
+        from panoramic_annotation_gui_refactored import PanoramicAnnotationGUI as RefactoredGUI
         
-        print("GUI初始化成功")
+        root = tk.Tk()
+        app = RefactoredGUI(root)
+        
+        print("重构版GUI初始化成功")
         
         # 设置窗口图标（如果有的话）
         try:
@@ -2306,6 +2308,12 @@ def main():
         # 启动主循环
         root.mainloop()
         
+    except ImportError as e:
+        print(f"无法导入重构版GUI，使用原始版本: {e}")
+        # 回退到原始版本
+        root = tk.Tk()
+        app = PanoramicAnnotationGUI(root)
+        root.mainloop()
     except Exception as e:
         print(f"启动失败: {e}")
         import traceback

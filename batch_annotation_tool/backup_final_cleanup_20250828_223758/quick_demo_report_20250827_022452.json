@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-08-27T02:24:52.275168",
+  "summary": {
+    "tests_executed": 5,
+    "tests_passed": 5,
+    "defects_detected": 0,
+    "defects_fixed": 0,
+    "verification_passed": true,
+    "overall_success": true
+  },
+  "test_results": {
+    "Environment Check": {
+      "passed": true,
+      "issues": []
+    },
+    "GUI Components": {
+      "passed": true,
+      "issues": []
+    },
+    "Image System": {
+      "passed": true,
+      "issues": []
+    },
+    "Navigation": {
+      "passed": true,
+      "issues": []
+    },
+    "Annotations": {
+      "passed": true,
+      "issues": []
+    }
+  },
+  "defects": [],
+  "fixes_applied": [],
+  "fix_results": {}
+}
