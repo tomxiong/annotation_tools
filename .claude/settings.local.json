@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python -m ensurepip --default-pip)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(.venv\\Scripts\\python:*)",
+      "Bash(del:*)",
+      "Bash(rm:*)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(mkdir:*)"
+    ],
+    "deny": []
+  }
+}

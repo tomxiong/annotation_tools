@@ -149,39 +149,120 @@ class PanoramicAnnotation(Annotation):
         return adjacent
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        base_dict = super().to_dict()
-        base_dict.update({
-            'panoramic_image_id': self.panoramic_image_id,
+        """转换为字典 - 使用优化格式"""
+        # 创建优化格式的字典结构
+        optimized_dict = {
+            'image_id': f"{self.panoramic_image_id}_{self.hole_number}",
+            'image_path': f"{self.panoramic_image_id}/hole_{self.hole_number}.png",
+            'panoramic_id': self.panoramic_image_id,
             'hole_number': self.hole_number,
-            'hole_row': self.hole_row,
-            'hole_col': self.hole_col,
-            'microbe_type': self.microbe_type,
-            'growth_level': self.growth_level,
-            'interference_factors': self.interference_factors,
-            'gradient_context': self.gradient_context,
-            'annotation_source': self.annotation_source,
-            'is_confirmed': self.is_confirmed
-        })
+            'features': {
+                'microbe_type': self.microbe_type,
+                'growth_level': self.growth_level,
+                'growth_pattern': getattr(self, 'growth_pattern', ''),
+                'interference_factors': self.interference_factors,
+                'confidence': getattr(self, 'confidence', 1.0)
+            },
+            'annotation_metadata': {
+                'annotation_source': self.annotation_source,
+                'is_confirmed': self.is_confirmed
+            }
+        }
         
-        # Include timestamp if it exists (for proper timestamp preservation)
+        # 保留原始时间戳（如果存在）
         if hasattr(self, 'timestamp') and self.timestamp:
             if isinstance(self.timestamp, str):
-                base_dict['timestamp'] = self.timestamp
+                optimized_dict['annotation_metadata']['original_timestamp'] = self.timestamp
             else:
-                base_dict['timestamp'] = self.timestamp.isoformat()
-            print(f"[SERIALIZE] 保存 timestamp 到字典: {base_dict['timestamp']}")
+                optimized_dict['annotation_metadata']['original_timestamp'] = self.timestamp.isoformat()
+            print(f"[SERIALIZE] 保存 timestamp 到优化格式: {optimized_dict['annotation_metadata']['original_timestamp']}")
         
-        # Include enhanced_data if it exists (for JSON persistence)
-        if hasattr(self, 'enhanced_data') and self.enhanced_data:
-            base_dict['enhanced_data'] = self.enhanced_data
-            print(f"[SERIALIZE] 保存 enhanced_data 到字典: {len(str(self.enhanced_data))} 字符")
+        # 优先从对象的growth_pattern属性获取
+        if hasattr(self, 'growth_pattern') and self.growth_pattern:
+            optimized_dict['features']['growth_pattern'] = self.growth_pattern
+        # 如果对象没有growth_pattern，尝试从enhanced_data中提取
+        elif hasattr(self, 'enhanced_data') and self.enhanced_data:
+            enhanced = self.enhanced_data
+            # 优先从feature_combination获取growth_pattern
+            if 'feature_combination' in enhanced and enhanced['feature_combination']:
+                growth_pattern = enhanced['feature_combination'].get('growth_pattern', '')
+                if growth_pattern:
+                    optimized_dict['features']['growth_pattern'] = growth_pattern
+            # 其次从直接字段获取
+            elif 'growth_pattern' in enhanced:
+                optimized_dict['features']['growth_pattern'] = enhanced['growth_pattern']
         
-        return base_dict
+        print(f"[SERIALIZE] 使用优化格式保存标注: {optimized_dict['image_id']}")
+        return optimized_dict
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
-        """从字典创建对象"""
+        """从字典创建对象 - 兼容多种格式"""
+        
+        # 兼容性检查：检测数据格式类型
+        is_legacy_format = 'enhanced_data' in data
+        is_optimized_format = 'features' in data
+        
+        if is_optimized_format:
+            # 新的优化格式
+            return cls._from_optimized_format(data)
+        elif is_legacy_format:
+            # 旧的完整格式
+            return cls._from_legacy_format(data)
+        else:
+            # 基础格式
+            return cls._from_basic_format(data)
+    
+    @classmethod
+    def _from_optimized_format(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
+        """从优化格式创建对象"""
+        features = data['features']
+        
+        annotation = cls(
+            image_path=data.get('image_path', ''),
+            label=features['growth_level'],  # 使用growth_level作为label
+            bbox=[0, 0, 70, 70],  # 默认bbox，优化格式中不包含
+            confidence=features.get('confidence', 1.0),
+            panoramic_image_id=data.get('panoramic_id', ''),
+            hole_number=data.get('hole_number', 0),
+            hole_row=0,  # 优化格式中不包含，使用默认值
+            hole_col=0,  # 优化格式中不包含，使用默认值
+            microbe_type=features.get('microbe_type', 'bacteria'),
+            growth_level=features.get('growth_level', 'negative'),
+            interference_factors=features.get('interference_factors', []),
+            gradient_context=None,
+            annotation_source=data.get('annotation_metadata', {}).get('annotation_source', 'manual'),
+            is_confirmed=data.get('annotation_metadata', {}).get('is_confirmed', True)
+        )
+        
+        # 从features中创建enhanced_data结构以保持兼容性
+        growth_pattern = features.get('growth_pattern', '')
+        annotation.enhanced_data = {
+            'feature_combination': {
+                'growth_level': features.get('growth_level', 'negative'),
+                'growth_pattern': growth_pattern,
+                'interference_factors': features.get('interference_factors', []),
+                'confidence': features.get('confidence', 1.0)
+            },
+            'microbe_type': features.get('microbe_type', 'bacteria'),
+            'growth_pattern': growth_pattern,
+            'annotation_source': data.get('annotation_metadata', {}).get('annotation_source', 'manual'),
+            'is_confirmed': data.get('annotation_metadata', {}).get('is_confirmed', True)
+        }
+        
+        # 设置对象的growth_pattern属性
+        annotation.growth_pattern = growth_pattern
+        
+        # 设置时间戳
+        if 'annotation_metadata' in data and 'original_timestamp' in data['annotation_metadata']:
+            annotation.timestamp = data['annotation_metadata']['original_timestamp']
+        
+        print(f"[LOAD] 从优化格式加载标注: {data.get('image_id', 'unknown')}")
+        return annotation
+    
+    @classmethod
+    def _from_legacy_format(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
+        """从旧格式创建对象"""
         annotation = cls(
             image_path=data.get('image_path', data.get('image_id', '')),
             label=data['label'],
@@ -203,12 +284,49 @@ class PanoramicAnnotation(Annotation):
         if 'enhanced_data' in data and data['enhanced_data']:
             annotation.enhanced_data = data['enhanced_data']
             print(f"[DESERIALIZE] 恢复 enhanced_data 从字典: {len(str(data['enhanced_data']))} 字符")
+            
+            # 从enhanced_data中提取growth_pattern
+            enhanced = data['enhanced_data']
+            growth_pattern = ''
+            if 'feature_combination' in enhanced and enhanced['feature_combination']:
+                growth_pattern = enhanced['feature_combination'].get('growth_pattern', '')
+            elif 'growth_pattern' in enhanced:
+                growth_pattern = enhanced['growth_pattern']
+            
+            # 设置对象的growth_pattern属性
+            if growth_pattern:
+                annotation.growth_pattern = growth_pattern
+                print(f"[DESERIALIZE] 恢复 growth_pattern: {growth_pattern}")
         
         # Restore timestamp if it exists (for proper timestamp preservation)
         if 'timestamp' in data and data['timestamp']:
             annotation.timestamp = data['timestamp']
             print(f"[DESERIALIZE] 恢复 timestamp 从字典: {data['timestamp']}")
         
+        print(f"[LOAD] 从旧格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}")
+        return annotation
+    
+    @classmethod
+    def _from_basic_format(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
+        """从基础格式创建对象"""
+        annotation = cls(
+            image_path=data.get('image_path', ''),
+            label=data.get('label', 'negative'),
+            bbox=data.get('bbox', [0, 0, 70, 70]),
+            confidence=data.get('confidence'),
+            panoramic_image_id=data.get('panoramic_image_id', ''),
+            hole_number=data.get('hole_number', 0),
+            hole_row=data.get('hole_row', 0),
+            hole_col=data.get('hole_col', 0),
+            microbe_type=data.get('microbe_type', 'bacteria'),
+            growth_level=data.get('growth_level', 'negative'),
+            interference_factors=data.get('interference_factors', []),
+            gradient_context=data.get('gradient_context'),
+            annotation_source=data.get('annotation_source', 'manual'),
+            is_confirmed=data.get('is_confirmed', False)
+        )
+        
+        print(f"[LOAD] 从基础格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}")
         return annotation
 
 
@@ -251,6 +369,103 @@ class PanoramicDataset:
             if ann.panoramic_image_id == panoramic_id and ann.hole_number == hole_number:
                 return ann
         return None
+    
+    def get_latest_annotation(self) -> Optional[PanoramicAnnotation]:
+        """获取最后标注的annotation"""
+        if not self.annotations:
+            return None
+        
+        # 按时间戳排序，获取最新的标注
+        latest_annotation = None
+        latest_timestamp = None
+        
+        for ann in self.annotations:
+            # 尝试获取时间戳
+            timestamp = None
+            if hasattr(ann, 'timestamp') and ann.timestamp:
+                timestamp = ann.timestamp
+            elif hasattr(ann, 'annotation_metadata') and ann.annotation_metadata:
+                metadata = ann.annotation_metadata
+                if isinstance(metadata, dict):
+                    timestamp = metadata.get('original_timestamp') or metadata.get('timestamp')
+            
+            # 如果没有时间戳，使用创建时间
+            if not timestamp and hasattr(ann, 'created_at'):
+                timestamp = ann.created_at
+            
+            if timestamp:
+                try:
+                    # 转换为datetime对象进行比较
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        # 处理不同的时间戳格式
+                        if 'T' in timestamp:
+                            timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        else:
+                            # 尝试其他格式
+                            timestamp = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                    
+                    if latest_timestamp is None or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+                        latest_annotation = ann
+                except:
+                    # 如果时间戳解析失败，跳过这个标注
+                    continue
+        
+        # 如果没有有效的时间戳，返回最后一个添加的标注
+        if latest_annotation is None and self.annotations:
+            latest_annotation = self.annotations[-1]
+        
+        return latest_annotation
+    
+    def get_last_annotated_hole(self, panoramic_id: str) -> Optional[int]:
+        """获取指定全景图的最后标注孔位"""
+        panoramic_annotations = self.get_annotations_by_panoramic_id(panoramic_id)
+        if not panoramic_annotations:
+            return None
+        
+        # 按时间戳排序，获取最新的标注
+        latest_annotation = None
+        latest_timestamp = None
+        
+        for ann in panoramic_annotations:
+            # 尝试获取时间戳
+            timestamp = None
+            if hasattr(ann, 'timestamp') and ann.timestamp:
+                timestamp = ann.timestamp
+            elif hasattr(ann, 'annotation_metadata') and ann.annotation_metadata:
+                metadata = ann.annotation_metadata
+                if isinstance(metadata, dict):
+                    timestamp = metadata.get('original_timestamp') or metadata.get('timestamp')
+            
+            # 如果没有时间戳，使用创建时间
+            if not timestamp and hasattr(ann, 'created_at'):
+                timestamp = ann.created_at
+            
+            if timestamp:
+                try:
+                    # 转换为datetime对象进行比较
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        # 处理不同的时间戳格式
+                        if 'T' in timestamp:
+                            timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        else:
+                            # 尝试其他格式
+                            timestamp = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                    
+                    if latest_timestamp is None or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+                        latest_annotation = ann
+                except:
+                    # 如果时间戳解析失败，跳过这个标注
+                    continue
+        
+        # 如果没有有效的时间戳，返回最后一个添加的标注
+        if latest_annotation is None and panoramic_annotations:
+            latest_annotation = panoramic_annotations[-1]
+        
+        return latest_annotation.hole_number if latest_annotation else None
     
     def get_statistics(self) -> Dict[str, Any]:
         """获取数据集统计信息"""

@@ -19,11 +19,10 @@ class GrowthLevel(Enum):
 
 class InterferenceType(Enum):
     """干扰因素类型枚举"""
-    PORES = "pores"              # 气孔
-    ARTIFACTS = "artifacts"       # 杂质
-    EDGE_BLUR = "edge_blur"      # 边缘模糊
-    CONTAMINATION = "contamination"  # 污染
-    SCRATCHES = "scratches"      # 划痕
+    PORES = "气孔"                # 气孔
+    ARTIFACTS = "气孔重叠"         # 气孔重叠/伪影
+    DEBRIS = "杂质"               # 杂质/小块污渍
+    CONTAMINATION = "污染"        # 污染/大块污渍
 
 
 class GrowthPattern(Enum):
@@ -78,10 +77,36 @@ class FeatureCombination:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FeatureCombination':
         """从字典创建"""
+        # 处理干扰因素 - 支持中文和英文值
+        interference_factors = set()
+        for f in data.get('interference_factors', []):
+            try:
+                # 尝试直接创建枚举
+                interference_factors.add(InterferenceType(f))
+            except ValueError:
+                # 如果失败，尝试映射到中文值
+                interference_mapping = {
+                    'pores': '气孔',
+                    'debris': '杂质',      # 杂质
+                    'contamination': '污染', # 污染
+                    'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
+                    'noise': '气孔重叠',   # 噪声 -> 气孔重叠
+                    'edge_blur': '气孔',   # 兼容旧的边缘模糊值
+                    'scratches': '杂质',   # 划痕 -> 杂质
+                    '污渍': '污染'         # 污渍映射到污染
+                }
+                if f in interference_mapping:
+                    try:
+                        interference_factors.add(InterferenceType(interference_mapping[f]))
+                    except ValueError:
+                        print(f"警告: 无法映射干扰因素: {f}")
+                else:
+                    print(f"警告: 未知的干扰因素: {f}")
+        
         return cls(
             growth_level=GrowthLevel(data['growth_level']),
             growth_pattern=GrowthPattern(data['growth_pattern']) if data.get('growth_pattern') else None,
-            interference_factors=set(InterferenceType(f) for f in data.get('interference_factors', [])),
+            interference_factors=interference_factors,
             confidence=data.get('confidence', 1.0)
         )
 
@@ -232,10 +257,9 @@ class EnhancedPanoramicAnnotation:
         if self.feature_combination.interference_factors:
             interference_desc = {
                 InterferenceType.PORES: "气孔",
-                InterferenceType.ARTIFACTS: "杂质",
-                InterferenceType.EDGE_BLUR: "边缘模糊",
-                InterferenceType.CONTAMINATION: "污染",
-                InterferenceType.SCRATCHES: "划痕"
+                InterferenceType.ARTIFACTS: "气孔重叠",
+                InterferenceType.DEBRIS: "杂质",
+                InterferenceType.CONTAMINATION: "污染"
             }
             factors = [interference_desc[f] for f in self.feature_combination.interference_factors]
             desc_parts.append(f"含{'/'.join(factors)}")
@@ -272,7 +296,33 @@ class EnhancedPanoramicAnnotation:
         else:
             # 向后兼容：从旧格式创建
             growth_level = GrowthLevel(data.get('growth_level', 'negative'))
-            interference_factors = set(InterferenceType(f) for f in data.get('interference_factors', []))
+            
+            # 处理干扰因素 - 支持中文和英文值
+            interference_factors = set()
+            for f in data.get('interference_factors', []):
+                try:
+                    # 尝试直接创建枚举
+                    interference_factors.add(InterferenceType(f))
+                except ValueError:
+                    # 如果失败，尝试映射到中文值
+                    interference_mapping = {
+                        'pores': '气孔',
+                        'debris': '杂质',      # 杂质
+                        'contamination': '污染', # 污染
+                        'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
+                        'noise': '气孔重叠',   # 噪声 -> 气孔重叠
+                        'edge_blur': '气孔',   # 兼容旧的边缘模糊值
+                        'scratches': '杂质',   # 划痕 -> 杂质
+                        '污渍': '污染'         # 污渍映射到污染
+                    }
+                    if f in interference_mapping:
+                        try:
+                            interference_factors.add(InterferenceType(interference_mapping[f]))
+                        except ValueError:
+                            print(f"警告: 无法映射干扰因素: {f}")
+                    else:
+                        print(f"警告: 未知的干扰因素: {f}")
+            
             feature_combination = FeatureCombination(
                 growth_level=growth_level,
                 interference_factors=interference_factors,
@@ -296,13 +346,31 @@ class EnhancedPanoramicAnnotation:
     @classmethod
     def from_simple_annotation(cls, simple_ann) -> 'EnhancedPanoramicAnnotation':
         """从简单标注转换"""
-        # 解析干扰因素
+        # 解析干扰因素 - 支持中文和英文值
         interference_factors = set()
         for factor_str in getattr(simple_ann, 'interference_factors', []):
             try:
+                # 尝试直接创建枚举
                 interference_factors.add(InterferenceType(factor_str))
             except ValueError:
-                pass  # 忽略无效的干扰因素
+                # 如果失败，尝试映射到中文值
+                interference_mapping = {
+                    'pores': '气孔',
+                    'debris': '杂质',      # 杂质
+                    'contamination': '污染', # 污染
+                    'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
+                    'noise': '气孔重叠',   # 噪声 -> 气孔重叠
+                    'edge_blur': '气孔',   # 兼容旧的边缘模糊值
+                    'scratches': '杂质',   # 划痕 -> 杂质
+                    '污渍': '污染'         # 污渍映射到污染
+                }
+                if factor_str in interference_mapping:
+                    try:
+                        interference_factors.add(InterferenceType(interference_mapping[factor_str]))
+                    except ValueError:
+                        print(f"警告: 无法映射干扰因素: {factor_str}")
+                else:
+                    print(f"警告: 未知的干扰因素: {factor_str}")
         
         # 创建特征组合
         feature_combination = FeatureCombination(
@@ -334,20 +402,20 @@ class FeatureAnnotationRules:
     # 有效的特征组合规则
     VALID_COMBINATIONS = {
         # 阴性组合
-        (GrowthLevel.NEGATIVE, None): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.EDGE_BLUR],
+        (GrowthLevel.NEGATIVE, None): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.DEBRIS, InterferenceType.CONTAMINATION],
         (GrowthLevel.NEGATIVE, GrowthPattern.CLEAN): [],
         
         # 弱生长组合
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.SMALL_DOTS): [InterferenceType.PORES],
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.LIGHT_GRAY): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.IRREGULAR_AREAS): [InterferenceType.PORES],
+        (GrowthLevel.WEAK_GROWTH, GrowthPattern.SMALL_DOTS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.WEAK_GROWTH, GrowthPattern.LIGHT_GRAY): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.DEBRIS],
+        (GrowthLevel.WEAK_GROWTH, GrowthPattern.IRREGULAR_AREAS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
         
         # 阳性组合
-        (GrowthLevel.POSITIVE, GrowthPattern.CLUSTERED): [InterferenceType.PORES],
-        (GrowthLevel.POSITIVE, GrowthPattern.SCATTERED): [],
-        (GrowthLevel.POSITIVE, GrowthPattern.HEAVY_GROWTH): [],
-        (GrowthLevel.POSITIVE, GrowthPattern.FOCAL): [InterferenceType.PORES],  # 真菌
-        (GrowthLevel.POSITIVE, GrowthPattern.DIFFUSE): []  # 真菌
+        (GrowthLevel.POSITIVE, GrowthPattern.CLUSTERED): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.SCATTERED): [InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.HEAVY_GROWTH): [InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.FOCAL): [InterferenceType.PORES, InterferenceType.ARTIFACTS],  # 真菌
+        (GrowthLevel.POSITIVE, GrowthPattern.DIFFUSE): [InterferenceType.ARTIFACTS]  # 真菌
     }
     
     @classmethod

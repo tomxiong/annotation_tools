@@ -46,14 +46,19 @@ class PanoramicAnnotationGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("全景图像标注工具 - 微生物药敏检测")
-        # 设置合理的窗口大小，遵循布局规范
-        self.root.geometry("1680x1200")
-        self.root.minsize(1600, 1100)  # 设置最小尺寸
+        # 设置优化的窗口大小，调整为1600x900
+        self.root.geometry("1600x900")   # 目标尺寸1600x900
+        self.root.minsize(1400, 800)     # 保持最小尺寸
         
         # 服务和管理器
         self.image_service = PanoramicImageService()
         self.hole_manager = HoleManager()
         self.config_service = ConfigFileService()
+        
+        # 窗口尺寸跟踪
+        self.window_resize_log = []
+        self.initial_geometry = "1600x900"
+        self.current_geometry = "1600x900"
         
         # 数据
         self.current_dataset = PanoramicDataset("新数据集", "全景图像标注数据集")
@@ -137,55 +142,55 @@ class PanoramicAnnotationGUI:
         toolbar = ttk.Frame(parent)
         toolbar.pack(fill=tk.X, pady=(0, 5))
         
-        # 全景图目录选择（必选）
-        ttk.Label(toolbar, text="全景图目录:").pack(side=tk.LEFT, padx=(0, 5))
+        # 全景图目录选择（必选）- 优化间距
+        ttk.Label(toolbar, text="全景图:").pack(side=tk.LEFT, padx=(0, 5))
         
         self.panoramic_dir_var = tk.StringVar()
-        panoramic_dir_entry = ttk.Entry(toolbar, textvariable=self.panoramic_dir_var, width=50)
+        panoramic_dir_entry = ttk.Entry(toolbar, textvariable=self.panoramic_dir_var, width=45)
         panoramic_dir_entry.pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Button(toolbar, text="浏览", 
-                  command=self.select_panoramic_directory).pack(side=tk.LEFT, padx=(0, 10))
+                  command=self.select_panoramic_directory).pack(side=tk.LEFT, padx=(0, 8))
         
-        # 切片目录选择（可选，用于独立路径模式）
-        ttk.Label(toolbar, text="切片目录(可选):").pack(side=tk.LEFT, padx=(0, 5))
+        # 切片目录选择（可选，用于独立路径模式）- 进一步压缩
+        ttk.Label(toolbar, text="切片:").pack(side=tk.LEFT, padx=(0, 2))
         
         self.slice_dir_var = tk.StringVar()
-        slice_dir_entry = ttk.Entry(toolbar, textvariable=self.slice_dir_var, width=40)
-        slice_dir_entry.pack(side=tk.LEFT, padx=(0, 5))
+        slice_dir_entry = ttk.Entry(toolbar, textvariable=self.slice_dir_var, width=25)
+        slice_dir_entry.pack(side=tk.LEFT, padx=(0, 2))
         
         ttk.Button(toolbar, text="浏览", 
-                  command=self.select_slice_directory).pack(side=tk.LEFT, padx=(0, 10))
+                  command=self.select_slice_directory).pack(side=tk.LEFT, padx=(0, 5))
         
-        # 模式选项
+        # 模式选项 - 压缩间距
         options_frame = ttk.Frame(toolbar)
-        options_frame.pack(side=tk.LEFT, padx=(10, 10))
+        options_frame.pack(side=tk.LEFT, padx=(8, 8))
         
         # 子目录模式选项
         self.use_subdirectory_mode = tk.BooleanVar(value=True)
         ttk.Checkbutton(options_frame, text="子目录模式", 
-                       variable=self.use_subdirectory_mode).pack(side=tk.LEFT, padx=(0, 5))
+                       variable=self.use_subdirectory_mode).pack(side=tk.LEFT, padx=(0, 3))
         
         # 居中导航选项
         self.use_centered_navigation = tk.BooleanVar(value=True)
         ttk.Checkbutton(options_frame, text="居中导航", 
-                       variable=self.use_centered_navigation).pack(side=tk.LEFT, padx=(0, 5))
+                       variable=self.use_centered_navigation).pack(side=tk.LEFT, padx=(0, 3))
         
         # 加载按钮
         ttk.Button(toolbar, text="加载数据", 
-                  command=self.load_data).pack(side=tk.LEFT, padx=(0, 10))
+                  command=self.load_data).pack(side=tk.LEFT, padx=(0, 5))
         
         # 保存按钮
         ttk.Button(toolbar, text="保存标注", 
-                  command=self.save_annotations).pack(side=tk.LEFT, padx=(0, 5))
+                  command=self.save_annotations).pack(side=tk.LEFT, padx=(0, 0))
         
         # 导出按钮
         ttk.Button(toolbar, text="导出训练数据", 
-                  command=self.export_training_data).pack(side=tk.LEFT, padx=(0, 10))
+                  command=self.export_training_data).pack(side=tk.LEFT, padx=(0, 5))
         
         # 加载标注按钮
         ttk.Button(toolbar, text="加载标注", 
-                  command=self.load_annotations).pack(side=tk.LEFT, padx=(0, 5))
+                  command=self.load_annotations).pack(side=tk.LEFT, padx=(0, 0))
         
         # 批量导入按钮
         ttk.Button(toolbar, text="批量导入", 
@@ -193,13 +198,13 @@ class PanoramicAnnotationGUI:
     
     def create_panoramic_panel(self, parent):
         """创建全景图显示面板"""
-        # 全景图面板 - 按照规范设置合理尺寸
-        panoramic_frame = ttk.LabelFrame(parent, text="全景图 (12×10孔位布局)", width=1200)
+        # 全景图面板 - 优化尺寸，减少固定高度
+        panoramic_frame = ttk.LabelFrame(parent, text="全景图 (12×10孔位布局)")
         panoramic_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        panoramic_frame.pack_propagate(False)  # 固定宽度
+        # 移除固定宽度限制，让面板自适应
         
-        # 全景图显示区域 - 设置合理的显示尺寸
-        self.panoramic_canvas = tk.Canvas(panoramic_frame, bg='white', width=1150, height=700)
+        # 全景图显示区域 - 减少固定高度，让图像自适应
+        self.panoramic_canvas = tk.Canvas(panoramic_frame, bg='white')
         self.panoramic_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 绑定鼠标点击事件
@@ -214,31 +219,43 @@ class PanoramicAnnotationGUI:
     
     def create_slice_panel(self, parent):
         """创建切片显示和控制面板"""
-        # 标注操作面板宽度 - 按照新的窗口尺寸设置合理宽度
-        right_frame = ttk.Frame(parent, width=420)
+        # 标注操作面板宽度 - 优化为更紧凑的布局
+        right_frame = ttk.Frame(parent, width=360)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
         right_frame.pack_propagate(False)  # 固定宽度
         
         # 批量操作 - 移到第一个位置
         self.create_batch_panel(right_frame)
         
+        # 导航控制 - 移到切片前面，符合操作流程：导航→查看→标注
+        self.create_navigation_panel(right_frame)
+        
         # 切片显示区域 - 设置合理的显示尺寸
         slice_frame = ttk.LabelFrame(right_frame, text="当前切片")
         slice_frame.pack(fill=tk.X, padx=(0, 0), pady=(0, 5))
         
-        # 设置合理的切片显示尺寸
-        self.slice_canvas = tk.Canvas(slice_frame, bg='white', width=200, height=200)
-        self.slice_canvas.pack(padx=5, pady=5)
+        # 设置优化的切片显示尺寸，适应新的窗口布局
+        self.slice_canvas = tk.Canvas(slice_frame, bg='white', width=150, height=150)
+        self.slice_canvas.pack(padx=5, pady=3)
         
-        # 切片信息
-        slice_info_frame = ttk.Frame(slice_frame)
-        slice_info_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        # 切片信息和标注预览合并区域 - 紧凑布局
+        info_frame = ttk.Frame(slice_frame)
+        info_frame.pack(fill=tk.X, padx=5, pady=(0, 3))
         
-        self.slice_info_label = ttk.Label(slice_info_frame, text="未加载切片")
-        self.slice_info_label.pack()
+        # 切片信息标签
+        self.slice_info_label = ttk.Label(info_frame, text="未加载切片", 
+                                         font=('TkDefaultFont', 8))
+        self.slice_info_label.pack(fill=tk.X, pady=(0, 2))
         
-        # 导航控制
-        self.create_navigation_panel(right_frame)
+        # 标注预览区域
+        self.annotation_preview_label = ttk.Label(info_frame, text="标注状态: 未标注", 
+                                                font=('TkDefaultFont', 8, 'bold'))
+        self.annotation_preview_label.pack(fill=tk.X, pady=(0, 2))
+        
+        # 详细标注信息预览区域
+        self.detailed_annotation_label = ttk.Label(info_frame, text="", 
+                                                  font=('TkDefaultFont', 8))
+        self.detailed_annotation_label.pack(fill=tk.X, pady=(0, 2))
         
         # 标注控制 - 现在是最后一个区域，可以动态扩展
         self.create_annotation_panel(right_frame)
@@ -274,118 +291,94 @@ class PanoramicAnnotationGUI:
             messagebox.showerror("错误", f"应用孔位配置失败: {str(e)}")
     
     def create_navigation_panel(self, parent):
-        """创建导航控制面板"""
-        nav_frame = ttk.LabelFrame(parent, text="导航控制")
+        """创建简化的导航控制面板"""
+        nav_frame = ttk.LabelFrame(parent, text="导航控制 (快捷键)")
         nav_frame.pack(fill=tk.X, pady=(0, 5))
         
-        # 创建全景图导航部分
-        panoramic_label = ttk.Label(nav_frame, text="全景图导航")
-        panoramic_label.pack(anchor=tk.W, padx=5, pady=(5, 0))
+        # 第一行：全景图导航
+        top_frame = ttk.Frame(nav_frame)
+        top_frame.pack(fill=tk.X, padx=5, pady=3)
         
-        panoramic_frame = ttk.Frame(nav_frame)
-        panoramic_frame.pack(pady=5, padx=5)
+        # 全景图导航
+        ttk.Label(top_frame, text="全景图:").pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(top_frame, text="◀", width=3,
+                  command=self.go_prev_panoramic).pack(side=tk.LEFT, padx=1)
         
-        # 上一个全景图按钮
-        ttk.Button(panoramic_frame, text="◀ 上一全景", width=10,
-                  command=self.go_prev_panoramic).pack(side=tk.LEFT, padx=2)
-        
-        # 全景图下拉列表
-        # 全景图下拉列表
-        self.panoramic_combobox = ttk.Combobox(panoramic_frame, 
+        self.panoramic_combobox = ttk.Combobox(top_frame, 
                                               textvariable=self.panoramic_id_var,
-                                              width=20)
-        self.panoramic_combobox.pack(side=tk.LEFT, padx=5)
+                                              width=12)
+        self.panoramic_combobox.pack(side=tk.LEFT, padx=2)
         self.panoramic_combobox.bind('<<ComboboxSelected>>', self.on_panoramic_selected)
         
-        # 下一个全景图按钮
-        ttk.Button(panoramic_frame, text="下一全景 ▶", width=10,
-                  command=self.go_next_panoramic).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top_frame, text="▶", width=3,
+                  command=self.go_next_panoramic).pack(side=tk.LEFT, padx=1)
         
-        # 添加分隔线
-        separator1 = ttk.Separator(nav_frame, orient='horizontal')
-        separator1.pack(fill=tk.X, padx=5, pady=5)
+        # 移除全景图快捷键提示
         
-        # 创建方向导航部分（基于孔位的二维布局）
-        direction_label = ttk.Label(nav_frame, text="方向导航")
-        direction_label.pack(anchor=tk.W, padx=5, pady=(0, 0))
+        # 第二行：孔位导航和序列导航
+        bottom_frame = ttk.Frame(nav_frame)
+        bottom_frame.pack(fill=tk.X, padx=5, pady=3)
         
-        direction_frame = ttk.Frame(nav_frame)
-        direction_frame.pack(pady=5, padx=5)
+        # 孔位跳转（左侧）- 支持回车执行
+        hole_frame = ttk.Frame(bottom_frame)
+        hole_frame.pack(side=tk.LEFT)
         
-        # 上方向按钮
-        ttk.Button(direction_frame, text="↑", width=4,
-                  command=self.go_up).grid(row=0, column=1, padx=1, pady=1)
-        
-        # 左方向按钮、孔位输入框、右方向按钮
-        ttk.Button(direction_frame, text="←", width=4,
-                  command=self.go_left).grid(row=1, column=0, padx=1, pady=1)
-        
-        # 孔位输入框放在中间位置
-        entry_frame = ttk.Frame(direction_frame)
-        entry_frame.grid(row=1, column=1, padx=1, pady=1)
+        ttk.Label(hole_frame, text="跳转:").pack(side=tk.LEFT, padx=(0, 2))
         
         self.hole_number_var = tk.StringVar(value="1")
-        hole_entry = ttk.Entry(entry_frame, textvariable=self.hole_number_var, width=8)
-        hole_entry.pack(padx=2, pady=2)
+        hole_entry = ttk.Entry(hole_frame, textvariable=self.hole_number_var, width=4)
+        hole_entry.pack(side=tk.LEFT, padx=1)
         hole_entry.bind('<Return>', self.go_to_hole)
         
-        ttk.Button(direction_frame, text="→", width=4,
-                  command=self.go_right).grid(row=1, column=2, padx=1, pady=1)
+        # 序列导航（右侧）
+        seq_frame = ttk.Frame(bottom_frame)
+        seq_frame.pack(side=tk.RIGHT)
         
-        # 下方向按钮
-        ttk.Button(direction_frame, text="↓", width=4,
-                  command=self.go_down).grid(row=2, column=1, padx=1, pady=1)
+        ttk.Button(seq_frame, text="◀◀", width=4,
+                  command=self.go_first_hole).pack(side=tk.LEFT, padx=1)
+        ttk.Button(seq_frame, text="◀", width=4,
+                  command=self.go_prev_hole).pack(side=tk.LEFT, padx=1)
+        ttk.Button(seq_frame, text="▶", width=4,
+                  command=self.go_next_hole).pack(side=tk.LEFT, padx=1)
+        ttk.Button(seq_frame, text="▶▶", width=4,
+                  command=self.go_last_hole).pack(side=tk.LEFT, padx=1)
         
-        # 添加分隔线
-        separator2 = ttk.Separator(nav_frame, orient='horizontal')
-        separator2.pack(fill=tk.X, padx=5, pady=5)
+        # 移除序列导航快捷键提示
         
-        # 创建序列导航部分（基于切片文件列表的顺序）
-        sequence_label = ttk.Label(nav_frame, text="序列导航")
-        sequence_label.pack(anchor=tk.W, padx=5, pady=(0, 0))
+        # 进度信息（居中）
+        self.progress_label = ttk.Label(bottom_frame, text="0/0")
+        self.progress_label.pack(side=tk.LEFT, expand=True)
         
-        sequence_frame = ttk.Frame(nav_frame)
-        sequence_frame.pack(pady=5, padx=5)
-        
-        # 序列导航按钮：首个、上一个、下一个、最后
-        ttk.Button(sequence_frame, text="◀◀ 首个", width=8,
-                  command=self.go_first_hole).pack(side=tk.LEFT, padx=2)
-        ttk.Button(sequence_frame, text="◀ 上一个", width=8,
-                  command=self.go_prev_hole).pack(side=tk.LEFT, padx=2)
-        ttk.Button(sequence_frame, text="下一个 ▶", width=8,
-                  command=self.go_next_hole).pack(side=tk.LEFT, padx=2)
-        ttk.Button(sequence_frame, text="最后 ▶▶", width=8,
-                  command=self.go_last_hole).pack(side=tk.LEFT, padx=2)
-        
-        # 进度信息
-        self.progress_label = ttk.Label(nav_frame, text="0/0")
-        self.progress_label.pack(pady=2)
+        # 画布点击提示
+        click_label = ttk.Label(nav_frame, text="提示: 点击全景图跳转对应孔位", 
+                               font=('TkDefaultFont', 8))
+        click_label.pack(side=tk.BOTTOM, padx=5, pady=(0, 3))
     
     def create_annotation_panel(self, parent):
         """创建标注控制面板"""
         ann_frame = ttk.LabelFrame(parent, text="标注控制")
         ann_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
         
-        # 标注按钮
-        self.button_frame = ttk.Frame(ann_frame)
-        self.button_frame.pack(fill=tk.X, padx=5, pady=(5, 5))
-        
-        ttk.Button(self.button_frame, text="保存并下一个", 
-                  command=self.save_current_annotation).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.button_frame, text="跳过", 
-                  command=self.skip_current).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.button_frame, text="清除标注", 
-                  command=self.clear_current_annotation).pack(side=tk.LEFT, padx=5)
-        
-        # 创建增强标注面板
+        # 创建增强标注面板 - 减少边距，不扩展
         self.enhanced_annotation_frame = ttk.Frame(ann_frame)
-        self.enhanced_annotation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+        self.enhanced_annotation_frame.pack(fill=tk.X, padx=3, pady=(3, 3))
         
         # 初始化enhanced annotation panel
         self.enhanced_annotation_panel = EnhancedAnnotationPanel(
             self.enhanced_annotation_frame,
             on_annotation_change=self.on_enhanced_annotation_change
         )
+        
+        # 标注按钮 - 移到增强标注面板下方
+        self.button_frame = ttk.Frame(ann_frame)
+        self.button_frame.pack(fill=tk.X, padx=5, pady=(3, 3))
+        
+        ttk.Button(self.button_frame, text="保存并下一个", 
+                  command=self.save_current_annotation).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.button_frame, text="跳过", 
+                  command=self.skip_current).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.button_frame, text="清除标注", 
+                  command=self.clear_current_annotation).pack(side=tk.LEFT, padx=2)
     
     def create_basic_annotation_controls(self, parent):
         """创建基础标注控件"""
@@ -448,11 +441,88 @@ class PanoramicAnnotationGUI:
         """增强标注变化回调"""
         # 标记当前标注已修改
         self.current_annotation_modified = True
+        
+        # 更新详细标注信息显示
+        detailed_info = self.get_detailed_annotation_info()
+        self.detailed_annotation_label.config(text=detailed_info)
+        
         # 可以在这里添加实时预览或验证逻辑
         pass
     
+    def get_detailed_annotation_info(self):
+        """获取详细标注信息用于显示"""
+        existing_ann = self.current_dataset.get_annotation_by_hole(
+            self.current_panoramic_id, 
+            self.current_hole_number
+        )
+        
+        if existing_ann:
+            # 构建详细标注信息 - 按照新格式：细菌 | 阳性 | 聚集型 | 1.00 | 无干扰
+            details = []
+            
+            # 微生物类型
+            if hasattr(existing_ann, 'microbe_type') and existing_ann.microbe_type:
+                microbe_text = "细菌" if existing_ann.microbe_type == "bacteria" else "真菌"
+                details.append(microbe_text)
+            
+            # 生长级别
+            if hasattr(existing_ann, 'growth_level') and existing_ann.growth_level:
+                growth_map = {
+                    'negative': '阴性',
+                    'weak_growth': '弱生长',
+                    'positive': '阳性'
+                }
+                growth_text = growth_map.get(existing_ann.growth_level, existing_ann.growth_level)
+                details.append(growth_text)
+            
+            # 生长模式（如果是增强标注）
+            if hasattr(existing_ann, 'growth_pattern') and existing_ann.growth_pattern:
+                # 映射生长模式为中文显示
+                pattern_map = {
+                    'clean': '清亮',
+                    'small_dots': '中心小点',
+                    'light_gray': '浅灰色',
+                    'irregular_areas': '不规则区域',
+                    'clustered': '聚集型',
+                    'scattered': '分散型',
+                    'heavy_growth': '重度生长',
+                    'focal': '聚焦性',
+                    'diffuse': '弥漫性',
+                    'default_positive': '阳性默认',
+                    'default_weak_growth': '弱生长默认'
+                }
+                pattern_text = pattern_map.get(existing_ann.growth_pattern, existing_ann.growth_pattern)
+                details.append(pattern_text)
+            
+            # 置信度
+            if hasattr(existing_ann, 'confidence') and existing_ann.confidence:
+                details.append(f"{existing_ann.confidence:.2f}")
+            
+            # 干扰因素
+            if hasattr(existing_ann, 'interference_factors') and existing_ann.interference_factors:
+                # 映射干扰因素为中文显示
+                interference_map = {
+                    'pores': '气孔',
+                    'artifacts': '气孔重叠',
+                    'noise': '气孔重叠',
+                    'debris': '杂质',
+                    'contamination': '污染'
+                }
+                if existing_ann.interference_factors:
+                    interference_text = ", ".join([interference_map.get(f, f) for f in existing_ann.interference_factors])
+                else:
+                    interference_text = "无干扰"
+                details.append(interference_text)
+            else:
+                details.append("无干扰")
+            
+            return " | ".join(details)
+        else:
+            # 如果没有标注，显示空字符串
+            return ""
+    
     def get_annotation_status_text(self):
-        """获取标注状态文本，包含日期时间 - 只有增强标注才算已标注"""
+        """获取标注状态文本，包含日期时间 - 优先使用JSON中的保存时间"""
         existing_ann = self.current_dataset.get_annotation_by_hole(
             self.current_panoramic_id, 
             self.current_hole_number
@@ -467,50 +537,47 @@ class PanoramicAnnotationGUI:
             if has_enhanced:
                 # 增强标注 - 显示已标注状态
                 annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                
+                # 优先尝试从标注对象获取保存的时间戳
+                saved_timestamp = None
+                if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
+                    try:
+                        import datetime
+                        if isinstance(existing_ann.timestamp, str):
+                            # 处理ISO格式时间戳
+                            saved_timestamp = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
+                        else:
+                            saved_timestamp = existing_ann.timestamp
+                        
+                        # 同步到内存缓存
+                        self.last_annotation_time[annotation_key] = saved_timestamp
+                        datetime_str = saved_timestamp.strftime("%m-%d %H:%M:%S")
+                        return f"已标注 ({datetime_str})"
+                    except Exception as e:
+                        print(f"[ERROR] 解析保存的时间戳失败: {e}")
+                
+                # 如果标注对象中没有时间戳，尝试从内存缓存获取
                 if annotation_key in self.last_annotation_time:
                     import datetime
                     datetime_str = self.last_annotation_time[annotation_key].strftime("%m-%d %H:%M:%S")
-                    return f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
-                else:
-                    # 尝试从标注对象获取时间戳
-                    if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                        import datetime
-                        try:
-                            if isinstance(existing_ann.timestamp, str):
-                                dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                            else:
-                                dt = existing_ann.timestamp
-                            datetime_str = dt.strftime("%m-%d %H:%M:%S")
-                            return f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
-                        except:
-                            pass
-                    return f"状态: 已标注 - {existing_ann.growth_level}"
+                    return f"已标注 ({datetime_str})"
+                
+                # 如果都没有时间戳，显示基本状态
+                return "已标注"
             else:
-                # 配置导入或其他类型 - 显示为配置导入状态
-                return f"状态: 配置导入 - {existing_ann.growth_level}"
+                # 配置导入或其他类型 - 显示为配置状态
+                return "配置"
         else:
-            return "状态: 未标注"
+            return "未标注"
     
     def create_batch_panel(self, parent):
-        """创建批量操作面板"""
-        batch_frame = ttk.LabelFrame(parent, text="批量操作")
-        batch_frame.pack(fill=tk.X, pady=(0, 2))
-        
-        # 统计信息 - 紧凑布局
-        stats_frame = ttk.Frame(batch_frame)
-        stats_frame.pack(fill=tk.X, padx=3, pady=1)
+        """创建统计面板"""
+        # 统计信息 - 纯统计功能
+        stats_frame = ttk.LabelFrame(parent, text="统计信息")
+        stats_frame.pack(fill=tk.X, pady=(0, 2))
         
         self.stats_label = ttk.Label(stats_frame, text="统计: 未标注 0, 阴性 0, 弱生长 0, 阳性 0")
-        self.stats_label.pack()
-        
-        # 批量操作按钮 - 紧凑布局
-        batch_buttons_frame = ttk.Frame(batch_frame)
-        batch_buttons_frame.pack(fill=tk.X, padx=3, pady=(0, 2))
-        
-        ttk.Button(batch_buttons_frame, text="标注整行为阴性", 
-                  command=self.batch_annotate_row_negative).pack(side=tk.LEFT, padx=2)
-        ttk.Button(batch_buttons_frame, text="标注整列为阴性", 
-                  command=self.batch_annotate_col_negative).pack(side=tk.LEFT, padx=2)
+        self.stats_label.pack(padx=5, pady=3)
     
     def create_status_bar(self, parent):
         """创建状态栏"""
@@ -521,8 +588,12 @@ class PanoramicAnnotationGUI:
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
     
     def setup_bindings(self):
-        """设置键盘快捷键"""
+        """设置键盘快捷键和窗口事件"""
+        # 窗口尺寸变化事件
+        self.root.bind('<Configure>', self.on_window_resize)
+        
         # 只在非输入控件获得焦点时响应快捷键
+        # 方向导航快捷键
         self.root.bind('<Key-1>', self.on_key_1)
         self.root.bind('<Key-2>', self.on_key_2)
         self.root.bind('<Key-3>', self.on_key_3)
@@ -530,6 +601,19 @@ class PanoramicAnnotationGUI:
         self.root.bind('<Right>', self.on_key_right)
         self.root.bind('<Up>', self.on_key_up)
         self.root.bind('<Down>', self.on_key_down)
+        
+        # 序列导航快捷键（Home/End 对应 首个/最后）
+        self.root.bind('<Home>', self.on_key_home)
+        self.root.bind('<End>', self.on_key_end)
+        
+        # 全景图导航快捷键（PageUp/Down 对应 上一全景/下一全景）
+        self.root.bind('<Prior>', self.on_key_page_up)  # PageUp
+        self.root.bind('<Next>', self.on_key_page_down)  # PageDown
+        
+        # 窗口分析快捷键
+        self.root.bind('<Control-l>', lambda e: self.analyze_window_resize_log())  # Ctrl+L 分析日志
+        
+        # 其他快捷键
         self.root.bind('<space>', self.on_key_space)
         self.root.bind('<Return>', self.on_key_return)
         
@@ -590,6 +674,127 @@ class PanoramicAnnotationGUI:
         """回车键事件处理"""
         if not self.is_input_widget_focused():
             self.go_next_hole()
+    
+    def on_key_home(self, event):
+        """Home键事件处理 - 跳转到第一个孔位"""
+        if not self.is_input_widget_focused():
+            self.go_first_hole()
+    
+    def on_key_end(self, event):
+        """End键事件处理 - 跳转到最后一个孔位"""
+        if not self.is_input_widget_focused():
+            self.go_last_hole()
+    
+    def on_key_page_up(self, event):
+        """PageUp键事件处理 - 上一张全景图"""
+        if not self.is_input_widget_focused():
+            self.go_prev_panoramic()
+    
+    def on_key_page_down(self, event):
+        """PageDown键事件处理 - 下一张全景图"""
+        if not self.is_input_widget_focused():
+            self.go_next_panoramic()
+    
+    def on_window_resize(self, event):
+        """窗口尺寸变化事件处理"""
+        if event.widget == self.root:  # 只处理主窗口的尺寸变化
+            # 获取当前窗口尺寸
+            geometry = self.root.geometry()
+            self.current_geometry = geometry
+            
+            # 记录尺寸变化日志
+            import time
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = {
+                'timestamp': timestamp,
+                'geometry': geometry,
+                'width': event.width,
+                'height': event.height,
+                'event': 'resize'
+            }
+            self.window_resize_log.append(log_entry)
+            
+            # 打印日志
+            print(f"[WINDOW_RESIZE] {timestamp} - 窗口尺寸变化: {geometry} (实际: {event.width}x{event.height})")
+            
+            # 限制日志长度，避免内存占用过多
+            if len(self.window_resize_log) > 100:
+                self.window_resize_log = self.window_resize_log[-50:]
+    
+    def analyze_window_resize_log(self):
+        """分析窗口尺寸变化日志，确定最佳窗口尺寸"""
+        if not self.window_resize_log:
+            print("[ANALYSIS] 没有窗口尺寸变化日志数据")
+            return
+        
+        print("\n" + "="*60)
+        print("[ANALYSIS] 窗口尺寸变化日志分析")
+        print("="*60)
+        
+        # 分析不同事件类型的尺寸变化
+        resize_events = [e for e in self.window_resize_log if e['event'] == 'resize']
+        load_panoramic_events = [e for e in self.window_resize_log if e['event'] in ['load_panoramic_start', 'load_panoramic_complete']]
+        load_annotation_events = [e for e in self.window_resize_log if e['event'] in ['load_annotations_start', 'load_annotations_complete']]
+        
+        print(f"\n1. 总体统计:")
+        print(f"   - 总日志条目: {len(self.window_resize_log)}")
+        print(f"   - 手动调整次数: {len(resize_events)}")
+        print(f"   - 全景图加载事件: {len(load_panoramic_events)}")
+        print(f"   - 标注加载事件: {len(load_annotation_events)}")
+        
+        # 分析手动调整的尺寸
+        if resize_events:
+            widths = [e['width'] for e in resize_events]
+            heights = [e['height'] for e in resize_events]
+            
+            print(f"\n2. 手动调整尺寸分析:")
+            print(f"   - 宽度范围: {min(widths)} - {max(widths)} px")
+            print(f"   - 高度范围: {min(heights)} - {max(heights)} px")
+            print(f"   - 平均宽度: {sum(widths)/len(widths):.0f} px")
+            print(f"   - 平均高度: {sum(heights)/len(heights):.0f} px")
+            
+            # 找出最常用的尺寸
+            from collections import Counter
+            size_counts = Counter([f"{e['width']}x{e['height']}" for e in resize_events])
+            most_common = size_counts.most_common(3)
+            print(f"   - 最常用尺寸: {most_common[0][0]} (出现{most_common[0][1]}次)")
+        
+        # 分析加载前后的尺寸变化
+        print(f"\n3. 加载事件分析:")
+        
+        # 全景图加载
+        for i in range(0, len(load_panoramic_events), 2):
+            if i+1 < len(load_panoramic_events):
+                start = load_panoramic_events[i]
+                complete = load_panoramic_events[i+1]
+                if start['event'] == 'load_panoramic_start' and complete['event'] == 'load_panoramic_complete':
+                    print(f"   - 全景图加载: {start['panoramic_id']}")
+                    print(f"     加载前: {start['geometry']}")
+                    print(f"     加载后: {complete['geometry']}")
+        
+        # 标注加载
+        for i in range(0, len(load_annotation_events), 2):
+            if i+1 < len(load_annotation_events):
+                start = load_annotation_events[i]
+                complete = load_annotation_events[i+1]
+                if start['event'] == 'load_annotations_start' and complete['event'] == 'load_annotations_complete':
+                    print(f"   - 标注加载: {complete.get('annotation_count', 'N/A')}个标注")
+                    print(f"     加载前: {start['geometry']}")
+                    print(f"     加载后: {complete['geometry']}")
+        
+        # 推荐最佳尺寸
+        if resize_events:
+            final_widths = [e['width'] for e in resize_events[-10:]]  # 最近10次调整
+            final_heights = [e['height'] for e in resize_events[-10:]]
+            recommended_width = int(sum(final_widths) / len(final_widths))
+            recommended_height = int(sum(final_heights) / len(final_heights))
+            
+            print(f"\n4. 推荐尺寸:")
+            print(f"   - 基于用户使用习惯推荐: {recommended_width}x{recommended_height}")
+            print(f"   - 当前默认尺寸: {self.initial_geometry}")
+            print(f"   - 当前实际尺寸: {self.current_geometry}")
+        
+        print("="*60 + "\n")
     
     def select_slice_directory(self):
         """选择切片目录"""
@@ -724,9 +929,7 @@ class PanoramicAnnotationGUI:
             self.load_panoramic_image()
             
             # 更新切片信息，包含标注状态
-            hole_label = self.hole_manager.get_hole_label(self.current_hole_number)
-            annotation_status = self.get_annotation_status_text()
-            self.slice_info_label.config(text=f"文件: {current_file['filename']}\n孔位: {hole_label} ({self.current_hole_number})\n{annotation_status}")
+            self.update_slice_info_display()
             
             # 加载已有标注
             self.load_existing_annotation()
@@ -818,6 +1021,21 @@ class PanoramicAnnotationGUI:
         if not self.current_panoramic_id:
             return
         
+        # 记录加载全景图前的窗口状态
+        import time
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        current_geometry = self.root.geometry()
+        print(f"[LOAD_PANORAMIC] {timestamp} - 开始加载全景图 {self.current_panoramic_id}, 当前窗口: {current_geometry}")
+        
+        # 记录到日志
+        log_entry = {
+            'timestamp': timestamp,
+            'geometry': current_geometry,
+            'event': 'load_panoramic_start',
+            'panoramic_id': self.current_panoramic_id
+        }
+        self.window_resize_log.append(log_entry)
+        
         try:
             # 查找全景图文件
             panoramic_file = self.image_service.find_panoramic_image(
@@ -848,9 +1066,9 @@ class PanoramicAnnotationGUI:
                 canvas_width = self.panoramic_canvas.winfo_width()
                 canvas_height = self.panoramic_canvas.winfo_height()
                 
-                # 使用实际画布尺寸，留少量边距
-                target_width = max(canvas_width - 40, 1300)  # 最小1300px宽度
-                target_height = max(canvas_height - 40, 800)  # 最小800px高度
+                # 使用实际画布尺寸，留少量边距 - 适应新的1240px宽度
+                target_width = max(canvas_width - 40, 1220)  # 最小1220px宽度，适应右侧360px面板
+                target_height = max(canvas_height - 40, 750)  # 最小750px高度
                 
                 display_panoramic = self.image_service.resize_image_for_display(
                     overlay_image, target_width, target_height, fill_mode='fit'
@@ -872,6 +1090,21 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             print(f"加载全景图失败: {str(e)}")
             self.panoramic_info_label.config(text=f"加载全景图失败: {self.current_panoramic_id}")
+        
+        # 记录加载全景图后的窗口状态
+        import time
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        final_geometry = self.root.geometry()
+        print(f"[LOAD_PANORAMIC] {timestamp} - 完成加载全景图 {self.current_panoramic_id}, 当前窗口: {final_geometry}")
+        
+        # 记录到日志
+        log_entry = {
+            'timestamp': timestamp,
+            'geometry': final_geometry,
+            'event': 'load_panoramic_complete',
+            'panoramic_id': self.current_panoramic_id
+        }
+        self.window_resize_log.append(log_entry)
     
     def load_existing_annotation(self):
         """加载已有标注"""
@@ -893,7 +1126,7 @@ class PanoramicAnnotationGUI:
                 import datetime
                 annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
                 
-                # 优先使用annotation对象中的timestamp
+                # 强制优先使用annotation对象中的timestamp
                 if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
                     try:
                         if isinstance(existing_ann.timestamp, str):
@@ -901,27 +1134,21 @@ class PanoramicAnnotationGUI:
                         else:
                             dt = existing_ann.timestamp
                         self.last_annotation_time[annotation_key] = dt
-                        print(f"[LOAD] 使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}")
+                        print(f"[LOAD] 强制使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}")
                         print(f"[TIMESTAMP] 来源: 保存的JSON文件 (annotation.timestamp)")
                     except Exception as e:
                         print(f"[ERROR] 时间戳解析失败: {e}")
-                        # 解析失败时使用内存中的时间戳或生成默认时间
-                        if annotation_key in self.last_annotation_time:
-                            print(f"[LOAD] 使用内存中的时间戳: {annotation_key}")
-                        else:
-                            default_time = datetime.datetime.now()
-                            self.last_annotation_time[annotation_key] = default_time
-                            print(f"[LOAD] 生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
-                            print(f"[TIMESTAMP] 来源: 生成的默认时间 (无保存时间戳)")
-                elif annotation_key in self.last_annotation_time:
-                    print(f"[LOAD] 使用内存中的时间戳: {annotation_key}")
-                    print(f"[TIMESTAMP] 来源: 内存缓存")
+                        # 解析失败时生成一个默认时间戳，但不使用可能错误的内存缓存
+                        default_time = datetime.datetime.now()
+                        self.last_annotation_time[annotation_key] = default_time
+                        print(f"[LOAD] 生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
+                        print(f"[TIMESTAMP] 来源: 生成的默认时间 (解析失败)")
                 else:
-                    # 手动标注但没有时间戳，生成一个默认时间戳
+                    # 如果标注对象没有时间戳属性，生成一个默认时间戳
                     default_time = datetime.datetime.now()
                     self.last_annotation_time[annotation_key] = default_time
-                    print(f"[LOAD] 为手动标注生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
-                    print(f"[TIMESTAMP] 来源: 生成的默认时间 (手动标注无时间戳)")
+                    print(f"[LOAD] 标注对象无时间戳，生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
+                    print(f"[TIMESTAMP] 来源: 生成的默认时间 (标注对象无时间戳属性)")
             
             # 同步到增强标注面板 - 改进逻辑以处理所有手动标注
             if self.enhanced_annotation_panel:
@@ -1008,34 +1235,81 @@ class PanoramicAnnotationGUI:
         try:
             print(f"[SYNC] 开始同步标注: 级别={annotation.growth_level}, 源={getattr(annotation, 'annotation_source', 'unknown')}")
             
-            # 使用新的可区分默认模式初始化面板
+            # 检查是否有用户之前选择的growth_pattern
+            user_growth_pattern = getattr(annotation, 'growth_pattern', None)
+            print(f"[SYNC] 检查用户生长模式: {user_growth_pattern}")
+            
+            # 检查是否有干扰因素
+            has_interference_factors = bool(annotation.interference_factors)
+            print(f"[SYNC] 检查干扰因素: {annotation.interference_factors}")
+            
             if self.enhanced_annotation_panel:
-                self.enhanced_annotation_panel.initialize_with_defaults(
-                    growth_level=annotation.growth_level,
-                    microbe_type=annotation.microbe_type
-                )
+                # 对于有干扰因素的标注，先初始化但不重置干扰因素
+                if has_interference_factors:
+                    print(f"[SYNC] 检测到干扰因素，初始化时保持现有设置")
+                    
+                    if user_growth_pattern:
+                        self.enhanced_annotation_panel.initialize_with_pattern(
+                            growth_level=annotation.growth_level,
+                            microbe_type=annotation.microbe_type,
+                            growth_pattern=user_growth_pattern,
+                            reset_interference=False
+                        )
+                    else:
+                        self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=annotation.growth_level,
+                            microbe_type=annotation.microbe_type,
+                            reset_interference=False
+                        )
+                else:
+                    # 没有干扰因素的标注，正常初始化
+                    if user_growth_pattern:
+                        print(f"[SYNC] 使用用户选择的生长模式: {user_growth_pattern}")
+                        self.enhanced_annotation_panel.initialize_with_pattern(
+                            growth_level=annotation.growth_level,
+                            microbe_type=annotation.microbe_type,
+                            growth_pattern=user_growth_pattern
+                        )
+                    else:
+                        print(f"[SYNC] 使用默认生长模式")
+                        self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=annotation.growth_level,
+                            microbe_type=annotation.microbe_type
+                        )
                 
                 # 处理干扰因素（如果有的话）
                 if annotation.interference_factors:
                     from models.enhanced_annotation import InterferenceType
                     
-                    # 映射干扰因素
+                    # 干扰因素映射（现在直接使用中文值）
                     interference_map = {
-                        'pores': InterferenceType.PORES,
-                        'artifacts': InterferenceType.ARTIFACTS,
-                        'edge_blur': InterferenceType.EDGE_BLUR,
-                        'contamination': InterferenceType.CONTAMINATION,
-                        'scratches': InterferenceType.SCRATCHES
+                        '气孔': InterferenceType.PORES,
+                        '气孔重叠': InterferenceType.ARTIFACTS,
+                        '杂质': InterferenceType.DEBRIS,
+                        '污染': InterferenceType.CONTAMINATION,
+                        'pores': InterferenceType.PORES,           # 兼容英文
+                        'artifacts': InterferenceType.ARTIFACTS,  # 兼容英文
+                        'noise': InterferenceType.ARTIFACTS,     # 兼容英文
+                        'debris': InterferenceType.DEBRIS,         # 兼容英文
+                        'contamination': InterferenceType.CONTAMINATION,  # 兼容英文
+                        'edge_blur': InterferenceType.PORES,      # 兼容旧的边缘模糊值
+                        'scratches': InterferenceType.DEBRIS,     # 兼容英文
+                        '污渍': InterferenceType.CONTAMINATION    # 污渍映射到污染
                     }
                     
+                    print(f"[SYNC] 开始设置干扰因素: {annotation.interference_factors}")
                     for factor in annotation.interference_factors:
                         if factor in interference_map:
                             mapped_factor = interference_map[factor]
                             if mapped_factor in self.enhanced_annotation_panel.interference_vars:
                                 self.enhanced_annotation_panel.interference_vars[mapped_factor].set(True)
-                                print(f"[SYNC] 设置干扰因素: {factor}")
+                                print(f"[SYNC] 设置干扰因素: {factor} -> {mapped_factor}")
+                            else:
+                                print(f"[SYNC] 警告: 找不到对应的干扰因素变量: {mapped_factor}")
+                        else:
+                            print(f"[SYNC] 警告: 无法映射干扰因素: {factor}")
                 
-                print(f"[SYNC] 使用可区分默认模式同步完成")
+                print(f"[SYNC] 同步完成")
             
         except Exception as e:
             print(f"[ERROR] 同步基础标注到增强面板失败: {e}")
@@ -1110,16 +1384,227 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             print(f"加载配置文件标注失败: {e}")
     
+    def get_next_hole_info(self):
+        """获取下一个孔位的信息"""
+        if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            return None
+        
+        start_hole = self.hole_manager.start_hole_number
+        current_index = self.current_slice_index
+        
+        # 查找下一个有效孔位
+        for i in range(current_index + 1, len(self.slice_files)):
+            hole_number = self.slice_files[i].get('hole_number', 1)
+            if hole_number >= start_hole:
+                return {
+                    'index': i,
+                    'hole_number': hole_number,
+                    'panoramic_id': self.slice_files[i].get('panoramic_id'),
+                    'file_info': self.slice_files[i]
+                }
+        
+        return None
+    
+    def get_current_annotation_settings(self):
+        """获取当前标注的设置"""
+        if not hasattr(self, 'enhanced_annotation_panel') or not self.enhanced_annotation_panel:
+            return None
+        
+        try:
+            feature_combination = self.enhanced_annotation_panel.get_current_feature_combination()
+            return {
+                'growth_level': feature_combination.growth_level,
+                'growth_pattern': feature_combination.growth_pattern,
+                'interference_factors': feature_combination.interference_factors,
+                'confidence': feature_combination.confidence,
+                'microbe_type': self.current_microbe_type.get()
+            }
+        except Exception as e:
+            print(f"[COPY] 获取当前标注设置失败: {e}")
+            return None
+    
+    def apply_annotation_settings(self, settings):
+        """应用标注设置到下一个孔位"""
+        if not settings or not hasattr(self, 'enhanced_annotation_panel') or not self.enhanced_annotation_panel:
+            return False
+        
+        try:
+            print(f"[COPY] 应用设置到下一个孔位: 生长级别={settings['growth_level']}")
+            
+            # 设置微生物类型
+            self.current_microbe_type.set(settings['microbe_type'])
+            
+            # 设置生长级别
+            if hasattr(settings['growth_level'], 'value'):
+                # 如果是枚举类型
+                self.enhanced_annotation_panel.current_growth_level.set(settings['growth_level'].value)
+            else:
+                # 如果是字符串
+                self.enhanced_annotation_panel.current_growth_level.set(settings['growth_level'])
+            
+            # 设置生长模式
+            if settings['growth_pattern']:
+                self.enhanced_annotation_panel.current_growth_pattern.set(settings['growth_pattern'])
+            
+            # 设置干扰因素
+            print(f"[COPY] 准备设置干扰因素，当前有 {len(settings['interference_factors'])} 个因素")
+            
+            # 获取面板中的干扰因素映射
+            panel_factors = self.enhanced_annotation_panel.interference_vars
+            print(f"[COPY] 面板支持的干扰因素: {list(panel_factors.keys())}")
+            
+            # 先重置所有干扰因素
+            for var in panel_factors.values():
+                var.set(False)
+            
+            # 设置当前设置中的干扰因素
+            interference_count = 0
+            for factor in settings['interference_factors']:
+                print(f"[COPY] 处理干扰因素: {factor} (类型: {type(factor)})")
+                
+                # 情况1: 直接匹配面板中的变量键
+                if factor in panel_factors:
+                    panel_factors[factor].set(True)
+                    interference_count += 1
+                    print(f"[COPY] ✓ 直接设置干扰因素: {factor}")
+                
+                # 情况2: 处理枚举类型的干扰因素
+                elif hasattr(factor, 'value'):
+                    factor_value = factor.value
+                    print(f"[COPY] 枚举因素值: {factor_value}")
+                    
+                    # 在面板变量中查找匹配的值
+                    for panel_key, panel_var in panel_factors.items():
+                        panel_value = panel_key.value if hasattr(panel_key, 'value') else panel_key
+                        if panel_value == factor_value:
+                            panel_var.set(True)
+                            interference_count += 1
+                            print(f"[COPY] ✓ 通过枚举值设置干扰因素: {factor_value}")
+                            break
+                
+                # 情况3: 处理字符串类型的干扰因素
+                elif isinstance(factor, str):
+                    # 在面板变量中查找匹配的值
+                    for panel_key, panel_var in panel_factors.items():
+                        panel_value = panel_key.value if hasattr(panel_key, 'value') else panel_key
+                        if panel_value == factor:
+                            panel_var.set(True)
+                            interference_count += 1
+                            print(f"[COPY] ✓ 通过字符串匹配设置干扰因素: {factor}")
+                            break
+                
+                # 情况4: 处理类名字符串（如 'InterferenceType.PORES'）
+                elif isinstance(factor, str) and '.' in factor:
+                    factor_name = factor.split('.')[-1]
+                    print(f"[COPY] 类名因素: {factor_name}")
+                    
+                    # 在面板变量中查找匹配的名称
+                    for panel_key, panel_var in panel_factors.items():
+                        panel_name = panel_key.__class__.__name__ + '.' + panel_key if hasattr(panel_key, '__class__') else str(panel_key)
+                        if panel_name.endswith(factor_name):
+                            panel_var.set(True)
+                            interference_count += 1
+                            print(f"[COPY] ✓ 通过类名匹配设置干扰因素: {factor_name}")
+                            break
+            
+            print(f"[COPY] 总共设置了 {interference_count} 个干扰因素")
+            
+            # 设置置信度
+            self.enhanced_annotation_panel.current_confidence.set(settings['confidence'])
+            
+            # 强制刷新界面
+            self.enhanced_annotation_panel.update_growth_pattern_options()
+            self.root.update_idletasks()
+            
+            print(f"[COPY] 设置应用完成")
+            return True
+            
+        except Exception as e:
+            print(f"[COPY] 应用设置失败: {e}")
+            return False
+    
+    def should_copy_settings(self, current_settings, next_hole_info):
+        """判断是否应该复制设置"""
+        if not current_settings or not next_hole_info:
+            return False
+        
+        # 获取下一个孔位的现有标注（如果有）
+        next_annotation = self.current_dataset.get_annotation_by_hole(
+            next_hole_info['panoramic_id'], 
+            next_hole_info['hole_number']
+        )
+        
+        # 如果下一个孔位已有标注，检查是否为配置导入或非手动标注
+        if next_annotation:
+            annotation_source = getattr(next_annotation, 'annotation_source', 'unknown')
+            print(f"[COPY] 下一个孔位已有标注，来源: {annotation_source}")
+            
+            # 如果是配置导入或非手动标注，仍然复制设置
+            # 只有真正的手动标注才不复制（视为review模式）
+            if annotation_source in ['config_import', 'batch_import', 'auto_import'] or annotation_source == 'unknown':
+                print(f"[COPY] 下一个孔位是{annotation_source}标注，允许复制设置")
+            else:
+                print(f"[COPY] 下一个孔位是手动标注，不复制设置")
+                return False
+        
+        # 检查下一个孔位是否与当前孔位有相同的生长级别
+        # 由于下一个孔位还没有标注，我们无法直接知道生长级别
+        # 但我们可以基于位置接近性来推断（相邻的孔位很可能有相似特性）
+        current_row, current_col = self.hole_manager.number_to_position(self.current_hole_number)
+        next_row, next_col = self.hole_manager.number_to_position(next_hole_info['hole_number'])
+        
+        # 计算距离
+        row_distance = abs(current_row - next_row)
+        col_distance = abs(current_col - next_col)
+        
+        # 如果是相邻的孔位（行距<=1，列距<=2），则认为可能有相似特性
+        is_adjacent = (row_distance <= 1 and col_distance <= 2)
+        
+        print(f"[COPY] 当前孔位({self.current_hole_number})位置: ({current_row},{current_col})")
+        print(f"[COPY] 下一个孔位({next_hole_info['hole_number']})位置: ({next_row},{next_col})")
+        print(f"[COPY] 距离: 行{row_distance}, 列{col_distance}, 相邻={is_adjacent}")
+        
+        return is_adjacent
+    
     def save_current_annotation(self):
         """保存当前标注并跳转到下一个"""
         print(f"[SAVE] 用户点击保存并下一个 - 调用 save_current_annotation 方法")
         try:
+            # 获取当前标注设置
+            current_settings = self.get_current_annotation_settings()
+            
+            # 获取下一个孔位信息
+            next_hole_info = self.get_next_hole_info()
+            
             if self.save_current_annotation_internal():
-                # 自动跳转到下一个
-                self.go_next_hole()
-                
-                current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
-                self.update_status(f"已保存标注: {current_file['filename']}")
+                # 智能复制逻辑
+                copy_applied = False
+                if current_settings and next_hole_info:
+                    if self.should_copy_settings(current_settings, next_hole_info):
+                        print(f"[SAVE] 准备智能复制设置到下一个孔位")
+                        
+                        # 自动跳转到下一个
+                        self.go_next_hole()
+                        
+                        # 延迟应用设置，确保界面加载完成
+                        def apply_settings_delayed():
+                            if self.apply_annotation_settings(current_settings):
+                                self.update_status(f"已保存标注并智能复制设置到孔位{self.current_hole_number}")
+                                copy_applied = True
+                            else:
+                                self.update_status(f"已保存标注，但设置复制失败")
+                        
+                        self.root.after(200, apply_settings_delayed)
+                    else:
+                        # 不复制设置，正常跳转
+                        self.go_next_hole()
+                        current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
+                        self.update_status(f"已保存标注: {current_file['filename']}")
+                else:
+                    # 无法获取设置或下一个孔位信息，正常跳转
+                    self.go_next_hole()
+                    current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
+                    self.update_status(f"已保存标注: {current_file['filename']}")
             
         except Exception as e:
             messagebox.showerror("错误", f"保存标注失败: {str(e)}")
@@ -1317,6 +1802,15 @@ class PanoramicAnnotationGUI:
                     import traceback
                     traceback.print_exc()
                     # 继续执行，但不设置 enhanced_data
+                
+                # 设置对象的growth_pattern属性，确保状态正确恢复
+                if hasattr(feature_combination, 'growth_pattern'):
+                    growth_pattern_value = feature_combination.growth_pattern
+                    if hasattr(growth_pattern_value, 'value'):
+                        annotation.growth_pattern = growth_pattern_value.value
+                    else:
+                        annotation.growth_pattern = str(growth_pattern_value)
+                    print(f"[SAVE] 设置growth_pattern: {annotation.growth_pattern}")
                 
                 print(f"[SAVE] 保存增强数据完成")
                 
@@ -1533,6 +2027,28 @@ class PanoramicAnnotationGUI:
                 self.update_progress()
                 return
     
+    def switch_to_hole(self, hole_number: int):
+        """切换到指定孔位（用于继续标注功能）"""
+        if not hole_number:
+            print(f"[SWITCH] 警告: 无效的孔位编号 {hole_number}")
+            return
+        
+        print(f"[SWITCH] 切换到孔位 {hole_number}")
+        
+        # 更新当前孔位编号状态
+        self.current_hole_number = hole_number
+        
+        # 使用现有的导航方法
+        self.navigate_to_hole(hole_number)
+        
+        # 强制更新切片信息显示
+        self.update_slice_info_display()
+        
+        # 确保状态栏更新
+        self.update_status(f"已切换到孔位 {hole_number}")
+        
+        print(f"[SWITCH] 完成切换到孔位 {hole_number}")
+    
     def on_panoramic_click(self, event):
         """全景图点击事件处理 - 优化的孔位定位算法"""
         if not self.panoramic_image:
@@ -1579,97 +2095,110 @@ class PanoramicAnnotationGUI:
             print(f"孔位点击处理失败: {e}")
             self.update_status("孔位定位失败")
     
-    def batch_annotate_row_negative(self):
-        """批量标注整行为阴性"""
-        if not self.current_panoramic_id:
-            return
-        
-        row, col = self.hole_manager.number_to_position(self.current_hole_number)
-        
-        # 获取同行的所有孔位
-        row_holes = []
-        for c in range(12):
-            hole_num = self.hole_manager.position_to_number(row, c)
-            row_holes.append(hole_num)
-        
-        # 批量标注
-        self.batch_annotate_holes(row_holes, 'negative')
-        
-        self.update_status(f"已批量标注第 {row + 1} 行为阴性")
+    # 暂时移除批量标注功能
+# def batch_annotate_row_negative(self):
+#     """批量标注整行为阴性"""
+#     if not self.current_panoramic_id:
+#         return
+#     
+#     row, col = self.hole_manager.number_to_position(self.current_hole_number)
+#     
+#     # 获取同行的所有孔位
+#     row_holes = []
+#     for c in range(12):
+#         hole_num = self.hole_manager.position_to_number(row, c)
+#         row_holes.append(hole_num)
+#     
+#     # 批量标注
+#     self.batch_annotate_holes(row_holes, 'negative')
+#     
+#     self.update_status(f"已批量标注第 {row + 1} 行为阴性")
+# 
+# def batch_annotate_col_negative(self):
+#     """批量标注整列为阴性"""
+#     if not self.current_panoramic_id:
+#         return
+#     
+#     row, col = self.hole_manager.number_to_position(self.current_hole_number)
+#     
+#     # 获取同列的所有孔位
+#     col_holes = []
+#     for r in range(10):
+#         hole_num = self.hole_manager.position_to_number(r, col)
+#         col_holes.append(hole_num)
+#     
+#     # 批量标注
+#     self.batch_annotate_holes(col_holes, 'negative')
+#     
+#     self.update_status(f"已批量标注第 {col + 1} 列为阴性")
     
-    def batch_annotate_col_negative(self):
-        """批量标注整列为阴性"""
-        if not self.current_panoramic_id:
-            return
-        
-        row, col = self.hole_manager.number_to_position(self.current_hole_number)
-        
-        # 获取同列的所有孔位
-        col_holes = []
-        for r in range(10):
-            hole_num = self.hole_manager.position_to_number(r, col)
-            col_holes.append(hole_num)
-        
-        # 批量标注
-        self.batch_annotate_holes(col_holes, 'negative')
-        
-        self.update_status(f"已批量标注第 {col + 1} 列为阴性")
-    
-    def batch_annotate_holes(self, hole_numbers: List[int], growth_level: str):
-        """批量标注指定孔位"""
-        count = 0
-        for hole_number in hole_numbers:
-            # 查找对应的切片文件
-            for file_info in self.slice_files:
-                if (file_info['panoramic_id'] == self.current_panoramic_id and 
-                    file_info['hole_number'] == hole_number):
-                    
-                    # 创建标注 - 批量操作，已确认状态
-                    annotation = PanoramicAnnotation.from_filename(
-                        file_info['filename'],
-                        label=growth_level,
-                        bbox=[0, 0, 70, 70],
-                        confidence=1.0,
-                        microbe_type=self.current_microbe_type.get(),
-                        growth_level=growth_level,
-                        interference_factors=[],
-                        annotation_source="batch_operation",
-                        is_confirmed=True,
-                        panoramic_id=file_info.get('panoramic_id')
-                    )
-                    
-                    # 设置完整文件路径
-                    annotation.image_path = file_info['filepath']
-                    
-                    # 移除已有标注
-                    existing_ann = self.current_dataset.get_annotation_by_hole(
-                        self.current_panoramic_id, hole_number
-                    )
-                    if existing_ann:
-                        self.current_dataset.annotations.remove(existing_ann)
-                    
-                    # 添加新标注
-                    self.current_dataset.add_annotation(annotation)
-                    count += 1
-                    break
-        
-        # 更新显示
-        self.load_panoramic_image()
-        self.update_statistics()
-        
-        return count
+    # 暂时移除批量标注功能
+# def batch_annotate_holes(self, hole_numbers: List[int], growth_level: str):
+#     """批量标注指定孔位"""
+#     count = 0
+#     for hole_number in hole_numbers:
+#         # 查找对应的切片文件
+#         for file_info in self.slice_files:
+#             if (file_info['panoramic_id'] == self.current_panoramic_id and 
+#                 file_info['hole_number'] == hole_number):
+#                 
+#                 # 创建标注 - 批量操作，已确认状态
+#                 annotation = PanoramicAnnotation.from_filename(
+#                     file_info['filename'],
+#                     label=growth_level,
+#                     bbox=[0, 0, 70, 70],
+#                     confidence=1.0,
+#                     microbe_type=self.current_microbe_type.get(),
+#                     growth_level=growth_level,
+#                     interference_factors=[],
+#                     annotation_source="batch_operation",
+#                     is_confirmed=True,
+#                     panoramic_id=file_info.get('panoramic_id')
+#                 )
+#                 
+#                 # 设置完整文件路径
+#                 annotation.image_path = file_info['filepath']
+#                 
+#                 # 移除已有标注
+#                 existing_ann = self.current_dataset.get_annotation_by_hole(
+#                     self.current_panoramic_id, hole_number
+#                 )
+#                 if existing_ann:
+#                     self.current_dataset.annotations.remove(existing_ann)
+#                 
+#                 # 添加新标注
+#                 self.current_dataset.add_annotation(annotation)
+#                 count += 1
+#                 break
+#     
+#     # 更新显示
+#     self.load_panoramic_image()
+#     self.update_statistics()
+#     
+#     return count
     
     def update_slice_info_display(self):
         """更新切片信息显示，包括标注状态和时间戳"""
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            # 重置显示
+            self.slice_info_label.config(text="未加载切片")
+            self.annotation_preview_label.config(text="标注状态: 未标注")
+            self.detailed_annotation_label.config(text="")
             return
             
         current_file = self.slice_files[self.current_slice_index]
         hole_label = self.hole_manager.get_hole_label(self.current_hole_number)
         annotation_status = self.get_annotation_status_text()
         
-        # 更新切片信息标签
-        self.slice_info_label.config(text=f"文件: {current_file['filename']}\n孔位: {hole_label} ({self.current_hole_number})\n{annotation_status}")
+        # 更新切片信息标签 - 只显示文件和孔位信息
+        self.slice_info_label.config(text=f"{current_file['filename']} - {hole_label}({self.current_hole_number})")
+        
+        # 更新标注预览标签
+        self.annotation_preview_label.config(text=f"标注状态: {annotation_status}")
+        
+        # 更新详细标注信息
+        detailed_info = self.get_detailed_annotation_info()
+        self.detailed_annotation_label.config(text=detailed_info)
         
         # Only log significant info changes to reduce spam
         if not hasattr(self, '_last_info_display') or self._last_info_display != annotation_status:
@@ -1680,7 +2209,7 @@ class PanoramicAnnotationGUI:
         self.root.update_idletasks()
     
     def get_annotation_status_text(self):
-        """获取标注状态文本，包含日期时间"""
+        """获取标注状态文本，包含日期时间 - 优先使用JSON中的保存时间"""
         existing_ann = self.current_dataset.get_annotation_by_hole(
             self.current_panoramic_id, 
             self.current_hole_number
@@ -1713,28 +2242,37 @@ class PanoramicAnnotationGUI:
             if has_enhanced:
                 # 增强标注 - 显示已标注状态
                 annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+                
+                # 优先尝试从标注对象获取保存的时间戳
+                if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
+                    try:
+                        import datetime
+                        if isinstance(existing_ann.timestamp, str):
+                            # 处理ISO格式时间戳
+                            saved_timestamp = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
+                        else:
+                            saved_timestamp = existing_ann.timestamp
+                        
+                        # 同步到内存缓存
+                        self.last_annotation_time[annotation_key] = saved_timestamp
+                        datetime_str = saved_timestamp.strftime("%m-%d %H:%M:%S")
+                        status_text = f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
+                        print(f"[STATUS] 使用保存的时间戳: {datetime_str}")
+                        return status_text
+                    except Exception as e:
+                        print(f"[ERROR] 解析保存的时间戳失败: {e}")
+                
+                # 如果标注对象中没有时间戳，尝试从内存缓存获取
                 if annotation_key in self.last_annotation_time:
                     import datetime
                     datetime_str = self.last_annotation_time[annotation_key].strftime("%m-%d %H:%M:%S")
                     status_text = f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
+                    print(f"[STATUS] 使用内存缓存的时间戳: {datetime_str}")
                     return status_text
-                else:
-                    # 尝试从标注对象获取时间戳
-                    if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                        import datetime
-                        try:
-                            if isinstance(existing_ann.timestamp, str):
-                                dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                            else:
-                                dt = existing_ann.timestamp
-                            datetime_str = dt.strftime("%m-%d %H:%M:%S")
-                            # 同步到内存
-                            self.last_annotation_time[annotation_key] = dt
-                            status_text = f"状态: 已标注 ({datetime_str}) - {existing_ann.growth_level}"
-                            return status_text
-                        except Exception as e:
-                            print(f"[ERROR] 时间戳解析失败: {e}")
+                
+                # 如果都没有时间戳，显示基本状态
                 status_text = f"状态: 已标注 - {existing_ann.growth_level}"
+                print(f"[STATUS] 无时间戳信息，显示基本状态")
                 return status_text
             else:
                 # 配置导入或其他类型 - 显示为配置导入状态
@@ -1818,7 +2356,7 @@ class PanoramicAnnotationGUI:
         
         # 更新显示
         if stats['config_only'] > 0:
-            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 弱生长 {stats['weak_growth']}, 阳性 {stats['positive']} (配置导入: {stats['config_only']})"
+            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 弱生长 {stats['weak_growth']}, 阳性 {stats['positive']} (配置: {stats['config_only']})"
         else:
             stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 弱生长 {stats['weak_growth']}, 阳性 {stats['positive']}"
         self.stats_label.config(text=stats_text)
@@ -1875,6 +2413,20 @@ class PanoramicAnnotationGUI:
     
     def load_annotations(self):
         """加载标注结果进行review"""
+        # 记录加载标注前的窗口状态
+        import time
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        current_geometry = self.root.geometry()
+        print(f"[LOAD_ANNOTATIONS] {timestamp} - 开始加载标注, 当前窗口: {current_geometry}")
+        
+        # 记录到日志
+        log_entry = {
+            'timestamp': timestamp,
+            'geometry': current_geometry,
+            'event': 'load_annotations_start'
+        }
+        self.window_resize_log.append(log_entry)
+        
         # 选择标注文件
         filename = filedialog.askopenfilename(
             title="选择标注文件",
@@ -1903,9 +2455,36 @@ class PanoramicAnnotationGUI:
                 self.current_dataset.add_annotation(annotation)
                 merge_count += 1
             
+            # 获取最后标注的信息，用于自动切换
+            latest_annotation = loaded_dataset.get_latest_annotation()
+            auto_switch_info = ""
+            
+            if latest_annotation:
+                # 记录自动切换信息
+                auto_switch_info = f" - 自动切换到 {latest_annotation.panoramic_image_id}_{latest_annotation.hole_number}"
+                print(f"[LOAD] 检测到最后标注: {latest_annotation.panoramic_image_id}_{latest_annotation.hole_number}")
+                
+                # 切换到对应的全景图
+                if latest_annotation.panoramic_image_id in self.panoramic_ids:
+                    print(f"[LOAD] 切换到全景图: {latest_annotation.panoramic_image_id}")
+                    success = self.switch_to_panoramic(latest_annotation.panoramic_image_id)
+                    
+                    if success:
+                        # 延迟切换到对应的孔位，确保全景图加载完成
+                        self.root.after(100, lambda: self.switch_to_hole(latest_annotation.hole_number))
+                    else:
+                        auto_switch_info = f" - 切换全景图失败"
+                else:
+                    print(f"[LOAD] 警告: 全景图 {latest_annotation.panoramic_image_id} 不在可用列表中")
+                    auto_switch_info = f" - 全景图 {latest_annotation.panoramic_image_id} 不可用"
+            else:
+                print(f"[LOAD] 没有找到标注信息，保持当前视图")
+            
             # 更新显示
             self.load_panoramic_image()
             self.update_statistics()
+            
+            print(f"[LOAD] 标注加载完成{auto_switch_info}")
             
             # 重新加载当前切片的标注并完整刷新当前孔状态
             self.load_existing_annotation()
@@ -1956,6 +2535,21 @@ class PanoramicAnnotationGUI:
             
             messagebox.showinfo("成功", f"已加载 {merge_count} 个标注进行review")
             self.update_status(f"已加载标注文件: {filename} ({merge_count} 个标注)")
+            
+            # 记录加载标注后的窗口状态
+            import time
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            final_geometry = self.root.geometry()
+            print(f"[LOAD_ANNOTATIONS] {timestamp} - 完成加载标注, 当前窗口: {final_geometry}")
+            
+            # 记录到日志
+            log_entry = {
+                'timestamp': timestamp,
+                'geometry': final_geometry,
+                'event': 'load_annotations_complete',
+                'annotation_count': merge_count
+            }
+            self.window_resize_log.append(log_entry)
             
         except Exception as e:
             messagebox.showerror("错误", f"加载标注文件失败: {str(e)}")
@@ -2281,6 +2875,45 @@ class PanoramicAnnotationGUI:
             self.update_status(f"已切换到全景图: {panoramic_id}")
         else:
             messagebox.showerror("错误", f"未找到全景图 {panoramic_id} 的切片文件")
+    
+    def switch_to_panoramic(self, panoramic_id):
+        """自动切换到指定全景图（用于继续标注功能，不显示错误消息框）"""
+        if panoramic_id not in self.panoramic_ids:
+            print(f"[SWITCH] 警告: 全景图 {panoramic_id} 不在可用列表中")
+            return False
+        
+        # 保存当前标注
+        self.save_current_annotation_internal()
+        
+        # 查找目标全景图的第一个孔位
+        target_slice_index = None
+        start_hole = self.hole_manager.start_hole_number
+        
+        for i, slice_file in enumerate(self.slice_files):
+            if (slice_file['panoramic_id'] == panoramic_id and 
+                slice_file.get('hole_number', 1) >= start_hole):
+                target_slice_index = i
+                break
+        
+        if target_slice_index is not None:
+            # 更新当前索引和全景图ID
+            self.current_slice_index = target_slice_index
+            self.current_panoramic_id = panoramic_id
+            
+            # 更新下拉列表选中项
+            if hasattr(self, 'panoramic_combobox'):
+                self.panoramic_id_var.set(panoramic_id)
+            
+            # 加载新的切片
+            self.load_current_slice()
+            self.update_progress()
+            self.update_statistics()
+            
+            print(f"[SWITCH] 已切换到全景图: {panoramic_id}")
+            return True
+        else:
+            print(f"[SWITCH] 警告: 未找到全景图 {panoramic_id} 的切片文件")
+            return False
     
 
 
