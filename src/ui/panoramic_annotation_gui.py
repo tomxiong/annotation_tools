@@ -73,7 +73,6 @@ class PanoramicAnnotationGUI:
         self.current_annotation_modified = False  # 当前标注是否已修改
         
         # 目录路径
-        self.slice_directory = ""
         self.panoramic_directory = ""
         
         # 图像显示
@@ -104,7 +103,7 @@ class PanoramicAnnotationGUI:
         self.setup_bindings()
         
         # 状态栏
-        self.update_status("就绪 - 请选择切片目录和全景图目录")
+        self.update_status("就绪 - 请选择全景图目录")
     
     def create_widgets(self):
         """创建界面组件"""
@@ -151,30 +150,6 @@ class PanoramicAnnotationGUI:
         
         ttk.Button(toolbar, text="浏览", 
                   command=self.select_panoramic_directory).pack(side=tk.LEFT, padx=(0, 8))
-        
-        # 切片目录选择（可选，用于独立路径模式）- 进一步压缩
-        ttk.Label(toolbar, text="切片:").pack(side=tk.LEFT, padx=(0, 2))
-        
-        self.slice_dir_var = tk.StringVar()
-        slice_dir_entry = ttk.Entry(toolbar, textvariable=self.slice_dir_var, width=25)
-        slice_dir_entry.pack(side=tk.LEFT, padx=(0, 2))
-        
-        ttk.Button(toolbar, text="浏览", 
-                  command=self.select_slice_directory).pack(side=tk.LEFT, padx=(0, 5))
-        
-        # 模式选项 - 压缩间距
-        options_frame = ttk.Frame(toolbar)
-        options_frame.pack(side=tk.LEFT, padx=(8, 8))
-        
-        # 子目录模式选项
-        self.use_subdirectory_mode = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="子目录模式", 
-                       variable=self.use_subdirectory_mode).pack(side=tk.LEFT, padx=(0, 3))
-        
-        # 居中导航选项
-        self.use_centered_navigation = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="居中导航", 
-                       variable=self.use_centered_navigation).pack(side=tk.LEFT, padx=(0, 3))
         
         # 加载按钮
         ttk.Button(toolbar, text="加载数据", 
@@ -796,13 +771,6 @@ class PanoramicAnnotationGUI:
         
         print("="*60 + "\n")
     
-    def select_slice_directory(self):
-        """选择切片目录"""
-        directory = filedialog.askdirectory(title="选择切片图像目录")
-        if directory:
-            self.slice_dir_var.set(directory)
-            self.slice_directory = directory
-    
     def select_panoramic_directory(self):
         """选择全景图目录"""
         directory = filedialog.askdirectory(title="选择全景图目录")
@@ -811,35 +779,21 @@ class PanoramicAnnotationGUI:
             self.panoramic_directory = directory
     
     def load_data(self):
-        """加载数据 - 支持两种目录结构"""
+        """加载数据 - 使用子目录结构"""
         if not self.panoramic_directory:
             messagebox.showerror("错误", "请先选择全景图目录")
             return
         
         try:
-            # 根据模式选项决定如何加载数据
-            if self.use_subdirectory_mode.get():
-                # 子目录模式：忽略切片目录输入，直接使用全景目录下的子目录
-                self.slice_files = self.image_service.get_slice_files_from_directory(
-                    self.panoramic_directory, self.panoramic_directory)
-                structure_msg = '子目录模式'
-            else:
-                # 独立路径模式：使用用户指定的切片目录
-                if self.slice_directory:
-                    self.slice_files = self.image_service.get_slice_files_from_directory(
-                        self.slice_directory, self.panoramic_directory)
-                    structure_msg = '独立路径模式'
-                else:
-                    # 尝试从全景图目录加载（兼容旧版本）
-                    self.slice_files = self.image_service.get_slice_files_from_directory(
-                        self.panoramic_directory, self.panoramic_directory)
-                    structure_msg = '自动检测模式'
+            # 使用子目录模式：直接使用全景目录下的子目录
+            self.slice_files = self.image_service.get_slice_files_from_directory(
+                self.panoramic_directory, self.panoramic_directory)
+            structure_msg = '子目录模式'
             
             if not self.slice_files:
                 messagebox.showwarning("警告", 
                     "未找到有效的切片文件。\n请检查：\n" +
-                    "1. 独立模式：切片文件名格式为 <全景文件>_hole_<孔序号>.png\n" +
-                    "2. 子目录模式：切片文件在 <全景文件>/hole_<孔序号>.png")
+                    "切片文件应在 <全景文件>/hole_<孔序号>.png 位置")
                 return
             
             # 更新全景图列表
@@ -1212,15 +1166,16 @@ class PanoramicAnnotationGUI:
                     print(f"[FALLBACK] 原始数据: 生长级别={existing_ann.growth_level}, 源={existing_ann.annotation_source}")
                     self.sync_basic_to_enhanced_annotation(existing_ann)
                 else:
-                    # 配置导入标注：不自动同步到增强面板，保持中性状态
-                    print(f"[LOAD] 配置导入标注 - 保持增强面板中性状态")
+                    # 配置导入标注：使用默认生长模式
+                    print(f"[LOAD] 配置导入标注 - 使用默认生长模式")
                     if self.enhanced_annotation_panel:
-                        # 重置为默认状态，不显示具体模式
-                        self.enhanced_annotation_panel.reset_annotation()
-                        # 但设置正确的生长级别以匹配配置导入的数据
-                        if hasattr(self.enhanced_annotation_panel, 'current_growth_level'):
-                            self.enhanced_annotation_panel.current_growth_level.set(existing_ann.growth_level)
-                        print(f"[LOAD] 配置导入标注 - 只设置生长级别: {existing_ann.growth_level}")
+                        # 使用配置的生长级别初始化面板，设置可区分的默认生长模式
+                        self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=existing_ann.growth_level,
+                            microbe_type=existing_ann.microbe_type,
+                            reset_interference=True  # 配置标注没有干扰因素，重置干扰因素
+                        )
+                        print(f"[LOAD] 配置导入标注 - 设置生长级别为默认模式: {existing_ann.growth_level}")
             
             # 设置干扰因素（向后兼容）
             for factor in self.interference_factors:
@@ -1380,6 +1335,9 @@ class PanoramicAnnotationGUI:
             if imported_count > 0:
                 self.update_status(f"从配置文件导入了 {imported_count} 个标注")
                 self.update_statistics()
+                
+                # 核心修复：配置文件导入后刷新当前孔位的界面显示
+                self.load_existing_annotation()
             
         except Exception as e:
             print(f"加载配置文件标注失败: {e}")
@@ -1513,7 +1471,7 @@ class PanoramicAnnotationGUI:
             self.enhanced_annotation_panel.current_confidence.set(settings['confidence'])
             
             # 强制刷新界面
-            self.enhanced_annotation_panel.update_growth_pattern_options()
+            self.enhanced_annotation_panel.update_pattern_options()
             self.root.update_idletasks()
             
             print(f"[COPY] 设置应用完成")
@@ -1539,17 +1497,42 @@ class PanoramicAnnotationGUI:
             annotation_source = getattr(next_annotation, 'annotation_source', 'unknown')
             print(f"[COPY] 下一个孔位已有标注，来源: {annotation_source}")
             
-            # 如果是配置导入或非手动标注，仍然复制设置
-            # 只有真正的手动标注才不复制（视为review模式）
+            # 如果是配置导入或非手动标注，检查生长级别是否相同
             if annotation_source in ['config_import', 'batch_import', 'auto_import'] or annotation_source == 'unknown':
-                print(f"[COPY] 下一个孔位是{annotation_source}标注，允许复制设置")
+                print(f"[COPY] 下一个孔位是{annotation_source}标注，检查生长级别")
+                
+                # 获取下一个孔位的生长级别
+                next_growth_level = None
+                if hasattr(next_annotation, 'growth_level'):
+                    next_growth_level = next_annotation.growth_level
+                    if hasattr(next_growth_level, 'value'):
+                        next_growth_level = next_growth_level.value
+                
+                # 如果下一个孔位有配置的生长级别，检查是否与当前相同
+                if next_growth_level and next_growth_level != current_settings['growth_level']:
+                    print(f"[COPY] 生长级别不同：当前={current_settings['growth_level']}, 下一个={next_growth_level}，不复制设置")
+                    return False
+                elif next_growth_level:
+                    print(f"[COPY] 生长级别相同：{next_growth_level}，允许复制设置")
+                else:
+                    print(f"[COPY] 下一个孔位无生长级别信息，允许复制设置")
             else:
                 print(f"[COPY] 下一个孔位是手动标注，不复制设置")
                 return False
         
-        # 检查下一个孔位是否与当前孔位有相同的生长级别
-        # 由于下一个孔位还没有标注，我们无法直接知道生长级别
-        # 但我们可以基于位置接近性来推断（相邻的孔位很可能有相似特性）
+        # 检查下一个孔位是否与当前孔位有相同的生长级别（基于配置）
+        # 检查是否有配置文件为下一个孔位指定了生长级别
+        config_growth_level = self.get_config_growth_level(next_hole_info['hole_number'])
+        
+        if config_growth_level:
+            print(f"[COPY] 下一个孔位配置生长级别: {config_growth_level}")
+            if config_growth_level != current_settings['growth_level']:
+                print(f"[COPY] 配置生长级别不同：当前={current_settings['growth_level']}, 配置={config_growth_level}，不复制设置")
+                return False
+            else:
+                print(f"[COPY] 配置生长级别相同：{config_growth_level}，允许复制设置")
+        
+        # 如果没有配置生长级别，使用位置接近性推断（相邻的孔位很可能有相似特性）
         current_row, current_col = self.hole_manager.number_to_position(self.current_hole_number)
         next_row, next_col = self.hole_manager.number_to_position(next_hole_info['hole_number'])
         
@@ -1565,6 +1548,21 @@ class PanoramicAnnotationGUI:
         print(f"[COPY] 距离: 行{row_distance}, 列{col_distance}, 相邻={is_adjacent}")
         
         return is_adjacent
+    
+    def get_config_growth_level(self, hole_number):
+        """获取配置文件中指定孔位的生长级别"""
+        if not hasattr(self, 'config_data') or not self.config_data:
+            return None
+        
+        # 查找配置文件中该孔位的生长级别设置
+        for config_item in self.config_data:
+            if config_item.get('hole_number') == hole_number:
+                growth_level = config_item.get('growth_level')
+                if growth_level:
+                    print(f"[COPY] 孔位{hole_number}配置生长级别: {growth_level}")
+                    return growth_level
+        
+        return None
     
     def save_current_annotation(self):
         """保存当前标注并跳转到下一个"""
@@ -1914,94 +1912,35 @@ class PanoramicAnnotationGUI:
     
     def go_up(self):
         """向上导航"""
-        if self.use_centered_navigation.get():
-            # 居中导航模式：计算当前行上方的中间孔位
-            self.navigate_to_middle('up')
-        else:
-            # 传统导航模式：移动到上方相邻孔位
-            nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
-            if nav_info['can_go_up']:
-                target_hole = nav_info['up_hole']
-                self.navigate_to_hole(target_hole)
+        # 传统导航模式：移动到上方相邻孔位
+        nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
+        if nav_info['can_go_up']:
+            target_hole = nav_info['up_hole']
+            self.navigate_to_hole(target_hole)
     
     def go_down(self):
         """向下导航"""
-        if self.use_centered_navigation.get():
-            # 居中导航模式：计算当前行下方的中间孔位
-            self.navigate_to_middle('down')
-        else:
-            # 传统导航模式：移动到下方相邻孔位
-            nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
-            if nav_info['can_go_down']:
-                target_hole = nav_info['down_hole']
-                self.navigate_to_hole(target_hole)
+        # 传统导航模式：移动到下方相邻孔位
+        nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
+        if nav_info['can_go_down']:
+            target_hole = nav_info['down_hole']
+            self.navigate_to_hole(target_hole)
     
     def go_left(self):
         """向左导航"""
-        if self.use_centered_navigation.get():
-            # 居中导航模式：计算当前列左侧的中间孔位
-            self.navigate_to_middle('left')
-        else:
-            # 传统导航模式：移动到左侧相邻孔位
-            nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
-            if nav_info['can_go_left']:
-                target_hole = nav_info['left_hole']
-                self.navigate_to_hole(target_hole)
+        # 传统导航模式：移动到左侧相邻孔位
+        nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
+        if nav_info['can_go_left']:
+            target_hole = nav_info['left_hole']
+            self.navigate_to_hole(target_hole)
     
     def go_right(self):
         """向右导航"""
-        if self.use_centered_navigation.get():
-            # 居中导航模式：计算当前列右侧的中间孔位
-            self.navigate_to_middle('right')
-        else:
-            # 传统导航模式：移动到右侧相邻孔位
-            nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
-            if nav_info['can_go_right']:
-                target_hole = nav_info['right_hole']
-                self.navigate_to_hole(target_hole)
-    
-    def navigate_to_middle(self, direction: str):
-        """导航到指定方向的中间位置"""
-        middle_hole = self.get_middle_hole_in_direction(direction)
-        if middle_hole:
-            self.navigate_to_hole(middle_hole)
-            self.update_status(f"已导航到{direction}方向的中间位置: 孔位 {middle_hole}")
-        else:
-            self.update_status(f"无法导航到{direction}方向的中间位置")
-    
-    def get_middle_hole_in_direction(self, direction: str) -> int:
-        """计算指定方向上的中间孔位"""
-        current_row, current_col = self.hole_manager.number_to_position(self.current_hole_number)
-        
-        if direction == 'up':
-            if current_row <= 0:  # 已经在最上面一行
-                return None
-            target_row = current_row - 1
-            target_col = 5  # 中间列（0-11中的第6列）
-            return self.hole_manager.position_to_number(target_row, target_col)
-            
-        elif direction == 'down':
-            if current_row >= 9:  # 已经在最下面一行
-                return None
-            target_row = current_row + 1
-            target_col = 5  # 中间列（0-11中的第6列）
-            return self.hole_manager.position_to_number(target_row, target_col)
-            
-        elif direction == 'left':
-            if current_col <= 0:  # 已经在最左边一列
-                return None
-            target_row = 4  # 中间行（0-9中的第5行）
-            target_col = current_col - 1
-            return self.hole_manager.position_to_number(target_row, target_col)
-            
-        elif direction == 'right':
-            if current_col >= 11:  # 已经在最右边一列
-                return None
-            target_row = 4  # 中间行（0-9中的第5行）
-            target_col = current_col + 1
-            return self.hole_manager.position_to_number(target_row, target_col)
-            
-        return None
+        # 传统导航模式：移动到右侧相邻孔位
+        nav_info = self.hole_manager.get_navigation_info(self.current_hole_number)
+        if nav_info['can_go_right']:
+            target_hole = nav_info['right_hole']
+            self.navigate_to_hole(target_hole)
     
     def navigate_to_hole(self, hole_number: int):
         """导航到指定孔位"""
@@ -2040,6 +1979,9 @@ class PanoramicAnnotationGUI:
         
         # 使用现有的导航方法
         self.navigate_to_hole(hole_number)
+        
+        # 加载该孔位的标注数据
+        self.load_existing_annotation()
         
         # 强制更新切片信息显示
         self.update_slice_info_display()

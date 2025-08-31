@@ -45,6 +45,10 @@ def main():
         print(error_msg)
         print(f"错误详情: {type(e).__name__}: {e}")
         
+        # 打印更详细的调试信息
+        import traceback
+        traceback.print_exc()
+        
         try:
             messagebox.showerror("启动错误", error_msg)
         except:

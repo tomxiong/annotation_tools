@@ -8,7 +8,11 @@
       "Bash(rm:*)",
       "Bash(grep:*)",
       "Bash(python:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(\"./.venv/Scripts/python.exe\" test_config_import_fix.py)",
+      "Bash(\"./.venv/Scripts/python.exe\" test_annotation_loading_fix.py)",
+      "Bash(..venvScriptspython.exe run_gui_fixed.py)",
+      "Bash(.:*)"
     ],
     "deny": []
   }
