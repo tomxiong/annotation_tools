@@ -7,17 +7,29 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable, Set, List
 
+# 模型导入
+from src.models.enhanced_annotation import InterferenceType
+
+# 日志导入
+try:
+    from src.utils.logger import log_debug, log_info, log_warning, log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_warning(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 # 简化的枚举类定义
 class GrowthLevel:
     NEGATIVE = "negative"
     WEAK_GROWTH = "weak_growth"
     POSITIVE = "positive"
 
-class InterferenceType:
-    PORES = "气孔"
-    ARTIFACTS = "气孔重叠"
-    DEBRIS = "杂质"
-    CONTAMINATION = "污染"
 
 class GrowthPattern:
     # 阴性模式
@@ -57,17 +69,32 @@ class FeatureCombination:
             label_parts.append(self.growth_pattern)
         
         if self.interference_factors:
-            interference_str = "+".join(sorted(self.interference_factors))
+            # 转换枚举对象为字符串
+            interference_strs = []
+            for factor in self.interference_factors:
+                if hasattr(factor, 'value'):
+                    interference_strs.append(factor.value)
+                else:
+                    interference_strs.append(str(factor))
+            interference_str = "+".join(sorted(interference_strs))
             label_parts.append(f"with_{interference_str}")  # Use English instead of Chinese
         
         return "_".join(label_parts)
     
     def to_dict(self):
         """转换为字典"""
+        # 转换枚举对象为字符串
+        interference_factors = []
+        for factor in self.interference_factors:
+            if hasattr(factor, 'value'):
+                interference_factors.append(factor.value)
+            else:
+                interference_factors.append(str(factor))
+        
         return {
             'growth_level': self.growth_level,
             'growth_pattern': self.growth_pattern,
-            'interference_factors': list(self.interference_factors),
+            'interference_factors': interference_factors,
             'confidence': self.confidence
         }
     
@@ -212,7 +239,7 @@ class EnhancedAnnotationPanel:
                                  value=value, command=self.on_pattern_change)
             btn.pack(side=tk.LEFT, padx=2)
             self.pattern_buttons[value] = btn
-            print(f"[UI] 创建默认模式按钮: {text} -> {value}")
+            log_debug(f"创建默认模式按钮: {text} -> {value}", "UI")
         
         # 添加分隔线
         #separator = ttk.Separator(pattern_frame, orient='vertical')
@@ -225,7 +252,7 @@ class EnhancedAnnotationPanel:
             btn.pack(side=tk.LEFT, padx=2)
             self.pattern_buttons[value] = btn
         
-        print(f"[UI] 所有模式按钮已创建: {list(self.pattern_buttons.keys())}")
+        log_debug(f"所有模式按钮已创建: {list(self.pattern_buttons.keys())}", "UI")
     
     def create_interference_section(self):
         """创建干扰因素选择"""
@@ -287,7 +314,7 @@ class EnhancedAnnotationPanel:
         
         # 获取当前级别的可用选项
         available_patterns = pattern_options.get(growth_level, [])
-        print(f"[UI] 生长级别: {growth_level}, 可用模式: {available_patterns}")
+        log_debug(f"生长级别: {growth_level}, 可用模式: {available_patterns}", "UI")
         
         # 更新按钮显示状态
         visible_count = 0
@@ -300,7 +327,7 @@ class EnhancedAnnotationPanel:
                 btn.config(state="disabled")
                 btn.pack_forget()  # 隐藏不可用的选项
         
-        print(f"[UI] 显示模式按钮数量: {visible_count}/{len(self.pattern_buttons)}")
+        log_debug(f"显示模式按钮数量: {visible_count}/{len(self.pattern_buttons)}", "UI")
         
         # 重置当前选择到第一个可用选项
         if available_patterns:
@@ -374,16 +401,24 @@ class EnhancedAnnotationPanel:
             )
             
             # Only log if this is a new or changed combination
-            current_state = (growth_level, growth_pattern, tuple(sorted(interference_factors)), confidence)
+            # 转换枚举对象为字符串用于状态比较和日志记录
+            interference_factor_strs = []
+            for factor in interference_factors:
+                if hasattr(factor, 'value'):
+                    interference_factor_strs.append(factor.value)
+                else:
+                    interference_factor_strs.append(str(factor))
+            
+            current_state = (growth_level, growth_pattern, tuple(sorted(interference_factor_strs)), confidence)
             if not hasattr(self, '_last_combination_state') or self._last_combination_state != current_state:
-                print(f"[ANNOTATION] 特征组合: {growth_level}{'_' + growth_pattern if growth_pattern else ''}{'+' + '+'.join(sorted(interference_factors)) if interference_factors else ''} [{confidence:.2f}]")
+                log_debug(f"特征组合: {growth_level}{'_' + growth_pattern if growth_pattern else ''}{'+' + '+'.join(sorted(interference_factor_strs)) if interference_factor_strs else ''} [{confidence:.2f}]", "ANNOTATION")
                 self._last_combination_state = current_state
             
             return combination
         except Exception as e:
-            print(f"[ERROR] 获取特征组合时出错: {e}")
+            log_error(f"获取特征组合时出错: {e}", "ERROR")
             import traceback
-            traceback.print_exc()
+            log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
             raise
     
     def set_feature_combination(self, combination):
@@ -449,9 +484,9 @@ class EnhancedAnnotationPanel:
             
                         
         except Exception as e:
-            print(f"[ERROR] 设置特征组合失败: {e}")
+            log_error(f"设置特征组合失败: {e}", "ERROR")
             import traceback
-            traceback.print_exc()
+            log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
             # 回退到默认状态
             self.reset_annotation()
     
@@ -508,11 +543,11 @@ class EnhancedAnnotationPanel:
         
         # 根据参数决定是否重置干扰因素
         if reset_interference:
-            print(f"[INIT] 重置干扰因素")
+            log_debug(f"重置干扰因素", "INIT")
             for var in self.interference_vars.values():
                 var.set(False)
         else:
-            print(f"[INIT] 保持现有干扰因素设置")
+            log_debug(f"保持现有干扰因素设置", "INIT")
         
         # 设置默认置信度
         self.current_confidence.set(1.0)
@@ -540,7 +575,7 @@ class EnhancedAnnotationPanel:
         
         # 设置用户指定的生长模式
         if growth_pattern:
-            print(f"[INIT] 使用用户指定的生长模式: {growth_pattern}")
+            log_debug(f"使用用户指定的生长模式: {growth_pattern}", "INIT")
             self.current_growth_pattern.set(growth_pattern)
         else:
             # 如果没有指定模式，使用可区分的默认模式
@@ -549,11 +584,11 @@ class EnhancedAnnotationPanel:
         
         # 根据参数决定是否重置干扰因素
         if reset_interference:
-            print(f"[INIT] 重置干扰因素")
+            log_debug(f"重置干扰因素", "INIT")
             for var in self.interference_vars.values():
                 var.set(False)
         else:
-            print(f"[INIT] 保持现有干扰因素设置")
+            log_debug(f"保持现有干扰因素设置", "INIT")
         
         # 设置默认置信度
         self.current_confidence.set(1.0)
@@ -603,7 +638,7 @@ class EnhancedAnnotationPanel:
             self.update_preview()
             
         except Exception as e:
-            print(f"设置标注数据失败: {e}")
+            log_error(f"设置标注数据失败: {e}", "ERROR")
         
     def reset_to_default(self):
         """重置到默认状态"""
@@ -630,7 +665,7 @@ class EnhancedAnnotationPanel:
             self.update_preview()
             
         except Exception as e:
-            print(f"重置标注面板失败: {e}")
+            log_error(f"重置标注面板失败: {e}", "ERROR")
     
     def get_frame(self) -> ttk.Frame:
         """获取主框架"""

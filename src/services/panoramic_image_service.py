@@ -12,6 +12,14 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import cv2
 import numpy as np
 
+# 日志导入
+try:
+    from src.utils.logger import log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 from ui.hole_manager import HoleManager
 
 
@@ -112,7 +120,7 @@ class PanoramicImageService:
             raise FileNotFoundError(f"未找到对应的全景图: {panoramic_id}")
             
         except Exception as e:
-            print(f"查找全景图失败: {str(e)}")
+            log_error(f"查找全景图失败: {str(e)}", "IMAGE_SERVICE")
             return None
     
     def create_panoramic_overlay(self, panoramic_image: Image.Image, 
@@ -361,7 +369,7 @@ class PanoramicImageService:
                         slice_files.append(slice_info)
                         
                     except Exception as e:
-                        print(f"解析切片文件名失败 {filename}: {e}")
+                        log_error(f"解析切片文件名失败 {filename}: {e}", "IMAGE_SERVICE")
         
         return slice_files
     
@@ -401,7 +409,7 @@ class PanoramicImageService:
                             slice_files.append(slice_info)
                             
                         except Exception as e:
-                            print(f"解析子目录切片文件失败 {filename}: {e}")
+                            log_error(f"解析子目录切片文件失败 {filename}: {e}", "IMAGE_SERVICE")
                 
                 # 如果子目录中没有找到hole_*.png文件，尝试查找全景图文件
                 if not hole_files_found:
@@ -437,7 +445,7 @@ class PanoramicImageService:
                                         slice_files.append(slice_info)
                                         
                                     except Exception as e:
-                                        print(f"解析全景文件名子目录切片文件失败 {filename}: {e}")
+                                        log_error(f"解析全景文件名子目录切片文件失败 {filename}: {e}", "IMAGE_SERVICE")
         
         return slice_files
     
@@ -525,7 +533,7 @@ class PanoramicImageService:
                         slice_img = slice_img.resize(thumbnail_size, Image.Resampling.LANCZOS)
                         grid_image.paste(slice_img, (x, y))
                     except Exception as e:
-                        print(f"加载缩略图失败 {file_path}: {e}")
+                        log_error(f"加载缩略图失败 {file_path}: {e}", "IMAGE_SERVICE")
                         # 创建占位符
                         placeholder = Image.new('RGB', thumbnail_size, 'lightgray')
                         grid_image.paste(placeholder, (x, y))
@@ -537,7 +545,7 @@ class PanoramicImageService:
             return grid_image
             
         except Exception as e:
-            print(f"创建缩略图网格失败: {e}")
+            log_error(f"创建缩略图网格失败: {e}", "IMAGE_SERVICE")
             return None
     
     def get_image_statistics(self, image: Image.Image) -> Dict[str, Any]:

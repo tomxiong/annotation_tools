@@ -9,9 +9,19 @@ import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
 
+# 日志导入
+try:
+    from src.utils.logger import log_info, log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 def main():
     """主函数"""
-    print("启动全景图像标注工具...")
+    log_info("启动全景图像标注工具...", "STARTUP")
     
     try:
         # 获取项目根目录
@@ -35,15 +45,15 @@ def main():
         # 创建应用实例
         app = PanoramicAnnotationGUI(root)
         
-        print("界面已启动，请在窗口中操作")
+        log_info("界面已启动，请在窗口中操作", "STARTUP")
         
         # 启动主循环
         root.mainloop()
         
     except Exception as e:
         error_msg = f"启动失败: {str(e)}"
-        print(error_msg)
-        print(f"错误详情: {type(e).__name__}: {e}")
+        log_error(error_msg, "STARTUP")
+        log_error(f"错误详情: {type(e).__name__}: {e}", "STARTUP")
         
         # 打印更详细的调试信息
         import traceback

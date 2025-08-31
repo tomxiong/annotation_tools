@@ -9,6 +9,20 @@ from enum import Enum
 import json
 from pathlib import Path
 
+# 日志导入
+try:
+    from src.utils.logger import log_debug, log_info, log_warning, log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_warning(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 
 class GrowthLevel(Enum):
     """生长级别枚举"""
@@ -18,11 +32,11 @@ class GrowthLevel(Enum):
 
 
 class InterferenceType(Enum):
-    """干扰因素类型枚举"""
-    PORES = "气孔"                # 气孔
-    ARTIFACTS = "气孔重叠"         # 气孔重叠/伪影
-    DEBRIS = "杂质"               # 杂质/小块污渍
-    CONTAMINATION = "污染"        # 污染/大块污渍
+    """干扰因素类型枚举 - 使用标准英文术语"""
+    PORES = "pores"               # 气孔
+    ARTIFACTS = "artifacts"       # 伪影/气孔重叠
+    DEBRIS = "debris"             # 杂质/碎片
+    CONTAMINATION = "contamination"  # 污染
 
 
 class GrowthPattern(Enum):
@@ -84,24 +98,31 @@ class FeatureCombination:
                 # 尝试直接创建枚举
                 interference_factors.add(InterferenceType(f))
             except ValueError:
-                # 如果失败，尝试映射到中文值
+                # 如果失败，尝试映射到英文值
                 interference_mapping = {
-                    'pores': '气孔',
-                    'debris': '杂质',      # 杂质
-                    'contamination': '污染', # 污染
-                    'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
-                    'noise': '气孔重叠',   # 噪声 -> 气孔重叠
-                    'edge_blur': '气孔',   # 兼容旧的边缘模糊值
-                    'scratches': '杂质',   # 划痕 -> 杂质
-                    '污渍': '污染'         # 污渍映射到污染
+                    # 中文到英文的映射
+                    '气孔': 'pores',
+                    '气孔重叠': 'artifacts',
+                    '伪影': 'artifacts',
+                    '杂质': 'debris',
+                    '污染': 'contamination',
+                    '污渍': 'contamination',
+                    # 英文别名兼容
+                    'pores': 'pores',
+                    'debris': 'debris',
+                    'contamination': 'contamination',
+                    'artifacts': 'artifacts',
+                    'noise': 'artifacts',     # 噪声 -> 伪影
+                    'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                    'scratches': 'debris'      # 划痕 -> 杂质
                 }
                 if f in interference_mapping:
                     try:
                         interference_factors.add(InterferenceType(interference_mapping[f]))
                     except ValueError:
-                        print(f"警告: 无法映射干扰因素: {f}")
+                        log_warning(f"无法映射干扰因素: {f}")
                 else:
-                    print(f"警告: 未知的干扰因素: {f}")
+                    log_warning(f"未知的干扰因素: {f}")
         
         # 处理生长模式 - 支持默认值映射
         growth_pattern = None
@@ -119,11 +140,11 @@ class FeatureCombination:
                 if pattern_str in default_pattern_mapping:
                     try:
                         growth_pattern = GrowthPattern(default_pattern_mapping[pattern_str])
-                        print(f"映射默认生长模式: {pattern_str} -> {default_pattern_mapping[pattern_str]}")
+                        log_debug(f"映射默认生长模式: {pattern_str} -> {default_pattern_mapping[pattern_str]}", "MAPPING")
                     except ValueError:
-                        print(f"警告: 无法映射默认生长模式: {pattern_str}")
+                        log_warning(f"无法映射默认生长模式: {pattern_str}")
                 else:
-                    print(f"警告: 未知的生长模式: {pattern_str}")
+                    log_warning(f"未知的生长模式: {pattern_str}")
         
         return cls(
             growth_level=GrowthLevel(data['growth_level']),
@@ -326,24 +347,31 @@ class EnhancedPanoramicAnnotation:
                     # 尝试直接创建枚举
                     interference_factors.add(InterferenceType(f))
                 except ValueError:
-                    # 如果失败，尝试映射到中文值
+                    # 如果失败，尝试映射到英文值
                     interference_mapping = {
-                        'pores': '气孔',
-                        'debris': '杂质',      # 杂质
-                        'contamination': '污染', # 污染
-                        'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
-                        'noise': '气孔重叠',   # 噪声 -> 气孔重叠
-                        'edge_blur': '气孔',   # 兼容旧的边缘模糊值
-                        'scratches': '杂质',   # 划痕 -> 杂质
-                        '污渍': '污染'         # 污渍映射到污染
+                        # 中文到英文的映射
+                        '气孔': 'pores',
+                        '气孔重叠': 'artifacts',
+                        '伪影': 'artifacts',
+                        '杂质': 'debris',
+                        '污染': 'contamination',
+                        '污渍': 'contamination',
+                        # 英文别名兼容
+                        'pores': 'pores',
+                        'debris': 'debris',
+                        'contamination': 'contamination',
+                        'artifacts': 'artifacts',
+                        'noise': 'artifacts',     # 噪声 -> 伪影
+                        'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                        'scratches': 'debris'      # 划痕 -> 杂质
                     }
                     if f in interference_mapping:
                         try:
                             interference_factors.add(InterferenceType(interference_mapping[f]))
                         except ValueError:
-                            print(f"警告: 无法映射干扰因素: {f}")
+                            log_warning(f"无法映射干扰因素: {f}")
                     else:
-                        print(f"警告: 未知的干扰因素: {f}")
+                        log_warning(f"未知的干扰因素: {f}")
             
             feature_combination = FeatureCombination(
                 growth_level=growth_level,
@@ -375,24 +403,31 @@ class EnhancedPanoramicAnnotation:
                 # 尝试直接创建枚举
                 interference_factors.add(InterferenceType(factor_str))
             except ValueError:
-                # 如果失败，尝试映射到中文值
+                # 如果失败，尝试映射到英文值
                 interference_mapping = {
-                    'pores': '气孔',
-                    'debris': '杂质',      # 杂质
-                    'contamination': '污染', # 污染
-                    'artifacts': '气孔重叠', # 伪影/人工痕迹 -> 气孔重叠
-                    'noise': '气孔重叠',   # 噪声 -> 气孔重叠
-                    'edge_blur': '气孔',   # 兼容旧的边缘模糊值
-                    'scratches': '杂质',   # 划痕 -> 杂质
-                    '污渍': '污染'         # 污渍映射到污染
+                    # 中文到英文的映射
+                    '气孔': 'pores',
+                    '气孔重叠': 'artifacts',
+                    '伪影': 'artifacts',
+                    '杂质': 'debris',
+                    '污染': 'contamination',
+                    '污渍': 'contamination',
+                    # 英文别名兼容
+                    'pores': 'pores',
+                    'debris': 'debris',
+                    'contamination': 'contamination',
+                    'artifacts': 'artifacts',
+                    'noise': 'artifacts',     # 噪声 -> 伪影
+                    'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                    'scratches': 'debris'      # 划痕 -> 杂质
                 }
                 if factor_str in interference_mapping:
                     try:
                         interference_factors.add(InterferenceType(interference_mapping[factor_str]))
                     except ValueError:
-                        print(f"警告: 无法映射干扰因素: {factor_str}")
+                        log_warning(f"无法映射干扰因素: {factor_str}")
                 else:
-                    print(f"警告: 未知的干扰因素: {factor_str}")
+                    log_warning(f"未知的干扰因素: {factor_str}")
         
         # 创建特征组合
         feature_combination = FeatureCombination(

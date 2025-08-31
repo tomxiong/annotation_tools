@@ -9,6 +9,14 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+# 日志导入
+try:
+    from src.utils.logger import log_debug
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 from .annotation import Annotation
 
 
@@ -175,7 +183,7 @@ class PanoramicAnnotation(Annotation):
                 optimized_dict['annotation_metadata']['original_timestamp'] = self.timestamp
             else:
                 optimized_dict['annotation_metadata']['original_timestamp'] = self.timestamp.isoformat()
-            print(f"[SERIALIZE] 保存 timestamp 到优化格式: {optimized_dict['annotation_metadata']['original_timestamp']}")
+            log_debug(f"保存 timestamp 到优化格式: {optimized_dict['annotation_metadata']['original_timestamp']}", "SERIALIZE")
         
         # 优先从对象的growth_pattern属性获取
         if hasattr(self, 'growth_pattern') and self.growth_pattern:
@@ -192,7 +200,7 @@ class PanoramicAnnotation(Annotation):
             elif 'growth_pattern' in enhanced:
                 optimized_dict['features']['growth_pattern'] = enhanced['growth_pattern']
         
-        print(f"[SERIALIZE] 使用优化格式保存标注: {optimized_dict['image_id']}")
+        log_debug(f"使用优化格式保存标注: {optimized_dict['image_id']}", "SERIALIZE")
         return optimized_dict
     
     @classmethod
@@ -218,6 +226,30 @@ class PanoramicAnnotation(Annotation):
         """从优化格式创建对象"""
         features = data['features']
         
+        # 处理干扰因素 - 支持中文和英文值
+        interference_factors = []
+        for f in features.get('interference_factors', []):
+            # 中文到英文的映射
+            interference_mapping = {
+                '气孔': 'pores',
+                '气孔重叠': 'artifacts',
+                '伪影': 'artifacts',
+                '杂质': 'debris',
+                '污染': 'contamination',
+                '污渍': 'contamination',
+                # 英文别名兼容
+                'pores': 'pores',
+                'debris': 'debris',
+                'contamination': 'contamination',
+                'artifacts': 'artifacts',
+                'noise': 'artifacts',     # 噪声 -> 伪影
+                'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                'scratches': 'debris'      # 划痕 -> 杂质
+            }
+            # 映射到标准英文值
+            mapped_factor = interference_mapping.get(f, f)
+            interference_factors.append(mapped_factor)
+        
         annotation = cls(
             image_path=data.get('image_path', ''),
             label=features['growth_level'],  # 使用growth_level作为label
@@ -229,7 +261,7 @@ class PanoramicAnnotation(Annotation):
             hole_col=0,  # 优化格式中不包含，使用默认值
             microbe_type=features.get('microbe_type', 'bacteria'),
             growth_level=features.get('growth_level', 'negative'),
-            interference_factors=features.get('interference_factors', []),
+            interference_factors=interference_factors,
             gradient_context=None,
             annotation_source=data.get('annotation_metadata', {}).get('annotation_source', 'manual'),
             is_confirmed=data.get('annotation_metadata', {}).get('is_confirmed', True)
@@ -241,7 +273,7 @@ class PanoramicAnnotation(Annotation):
             'feature_combination': {
                 'growth_level': features.get('growth_level', 'negative'),
                 'growth_pattern': growth_pattern,
-                'interference_factors': features.get('interference_factors', []),
+                'interference_factors': interference_factors,  # 使用转换后的英文干扰因素
                 'confidence': features.get('confidence', 1.0)
             },
             'microbe_type': features.get('microbe_type', 'bacteria'),
@@ -257,12 +289,36 @@ class PanoramicAnnotation(Annotation):
         if 'annotation_metadata' in data and 'original_timestamp' in data['annotation_metadata']:
             annotation.timestamp = data['annotation_metadata']['original_timestamp']
         
-        print(f"[LOAD] 从优化格式加载标注: {data.get('image_id', 'unknown')}")
+        log_debug(f"从优化格式加载标注: {data.get('image_id', 'unknown')}", "LOAD")
         return annotation
     
     @classmethod
     def _from_legacy_format(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
         """从旧格式创建对象"""
+        # 处理干扰因素 - 支持中文和英文值
+        interference_factors = []
+        for f in data.get('interference_factors', []):
+            # 中文到英文的映射
+            interference_mapping = {
+                '气孔': 'pores',
+                '气孔重叠': 'artifacts',
+                '伪影': 'artifacts',
+                '杂质': 'debris',
+                '污染': 'contamination',
+                '污渍': 'contamination',
+                # 英文别名兼容
+                'pores': 'pores',
+                'debris': 'debris',
+                'contamination': 'contamination',
+                'artifacts': 'artifacts',
+                'noise': 'artifacts',     # 噪声 -> 伪影
+                'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                'scratches': 'debris'      # 划痕 -> 杂质
+            }
+            # 映射到标准英文值
+            mapped_factor = interference_mapping.get(f, f)
+            interference_factors.append(mapped_factor)
+        
         annotation = cls(
             image_path=data.get('image_path', data.get('image_id', '')),
             label=data['label'],
@@ -274,7 +330,7 @@ class PanoramicAnnotation(Annotation):
             hole_col=data['hole_col'],
             microbe_type=data['microbe_type'],
             growth_level=data['growth_level'],
-            interference_factors=data.get('interference_factors', []),
+            interference_factors=interference_factors,
             gradient_context=data.get('gradient_context'),
             annotation_source=data.get('annotation_source', 'manual'),
             is_confirmed=data.get('is_confirmed', False)
@@ -283,7 +339,7 @@ class PanoramicAnnotation(Annotation):
         # Restore enhanced_data if it exists (for JSON persistence)
         if 'enhanced_data' in data and data['enhanced_data']:
             annotation.enhanced_data = data['enhanced_data']
-            print(f"[DESERIALIZE] 恢复 enhanced_data 从字典: {len(str(data['enhanced_data']))} 字符")
+            log_debug(f"恢复 enhanced_data 从字典: {len(str(data['enhanced_data']))} 字符", "DESERIALIZE")
             
             # 从enhanced_data中提取growth_pattern
             enhanced = data['enhanced_data']
@@ -296,19 +352,43 @@ class PanoramicAnnotation(Annotation):
             # 设置对象的growth_pattern属性
             if growth_pattern:
                 annotation.growth_pattern = growth_pattern
-                print(f"[DESERIALIZE] 恢复 growth_pattern: {growth_pattern}")
+                log_debug(f"恢复 growth_pattern: {growth_pattern}", "DESERIALIZE")
         
         # Restore timestamp if it exists (for proper timestamp preservation)
         if 'timestamp' in data and data['timestamp']:
             annotation.timestamp = data['timestamp']
-            print(f"[DESERIALIZE] 恢复 timestamp 从字典: {data['timestamp']}")
+            log_debug(f"恢复 timestamp 从字典: {data['timestamp']}", "DESERIALIZE")
         
-        print(f"[LOAD] 从旧格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}")
+        log_debug(f"从旧格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}", "LOAD")
         return annotation
     
     @classmethod
     def _from_basic_format(cls, data: Dict[str, Any]) -> 'PanoramicAnnotation':
         """从基础格式创建对象"""
+        # 处理干扰因素 - 支持中文和英文值
+        interference_factors = []
+        for f in data.get('interference_factors', []):
+            # 中文到英文的映射
+            interference_mapping = {
+                '气孔': 'pores',
+                '气孔重叠': 'artifacts',
+                '伪影': 'artifacts',
+                '杂质': 'debris',
+                '污染': 'contamination',
+                '污渍': 'contamination',
+                # 英文别名兼容
+                'pores': 'pores',
+                'debris': 'debris',
+                'contamination': 'contamination',
+                'artifacts': 'artifacts',
+                'noise': 'artifacts',     # 噪声 -> 伪影
+                'edge_blur': 'pores',     # 兼容旧的边缘模糊值
+                'scratches': 'debris'      # 划痕 -> 杂质
+            }
+            # 映射到标准英文值
+            mapped_factor = interference_mapping.get(f, f)
+            interference_factors.append(mapped_factor)
+        
         annotation = cls(
             image_path=data.get('image_path', ''),
             label=data.get('label', 'negative'),
@@ -320,13 +400,13 @@ class PanoramicAnnotation(Annotation):
             hole_col=data.get('hole_col', 0),
             microbe_type=data.get('microbe_type', 'bacteria'),
             growth_level=data.get('growth_level', 'negative'),
-            interference_factors=data.get('interference_factors', []),
+            interference_factors=interference_factors,
             gradient_context=data.get('gradient_context'),
             annotation_source=data.get('annotation_source', 'manual'),
             is_confirmed=data.get('is_confirmed', False)
         )
         
-        print(f"[LOAD] 从基础格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}")
+        log_debug(f"从基础格式加载标注: {data.get('panoramic_image_id', 'unknown')}_{data.get('hole_number', 0)}", "LOAD")
         return annotation
 
 

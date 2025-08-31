@@ -8,6 +8,18 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 import re
 
+# 日志导入
+try:
+    from src.utils.logger import log_info, log_error, log_debug
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 
 class ConfigFileService:
     """
@@ -38,7 +50,7 @@ class ConfigFileService:
             return None
             
         except Exception as e:
-            print(f"查找配置文件失败: {e}")
+            log_error(f"查找配置文件失败: {e}", "CONFIG")
             return None
     
     def parse_config_file(self, config_file_path: str) -> Optional[Dict[int, str]]:
@@ -53,7 +65,7 @@ class ConfigFileService:
         """
         try:
             if not os.path.exists(config_file_path):
-                print(f"配置文件不存在: {config_file_path}")
+                log_error(f"配置文件不存在: {config_file_path}", "CONFIG")
                 return None
             
             annotations = {}
@@ -62,26 +74,110 @@ class ConfigFileService:
                 content = f.read().strip()
                 
                 if not content:
-                    print(f"配置文件为空: {config_file_path}")
+                    log_error(f"配置文件为空: {config_file_path}", "CONFIG")
                     return {}
                 
                 # 尝试不同的解析格式
-                # 尝试不同的解析格式
-                annotations = self._parse_format_1(content) or \
+                # 优先尝试复杂格式（JSON），然后是简单格式
+                annotations = self._parse_format_json(content) or \
+                             self._parse_format_enhanced(content) or \
+                             self._parse_format_1(content) or \
                              self._parse_format_2(content) or \
                              self._parse_format_3(content) or \
                              self._parse_format_symbol_string(content)
                 
                 if annotations is None:
-                    print(f"无法解析配置文件格式: {config_file_path}")
+                    log_error(f"无法解析配置文件格式: {config_file_path}", "CONFIG")
                     return None
                 
-                print(f"成功解析配置文件: {config_file_path}, 共 {len(annotations)} 个标注")
+                # 提取全景图ID用于日志
+                panoramic_id = Path(config_file_path).stem
+                log_debug(f"解析配置文件: {panoramic_id}，共 {len(annotations)} 个标注", "CONFIG")
                 return annotations
                 
         except Exception as e:
-            print(f"解析配置文件失败: {e}")
+            log_error(f"解析配置文件失败: {e}", "CONFIG")
             return None
+    
+    def _parse_format_json(self, content: str) -> Optional[Dict[int, str]]:
+        """
+        解析JSON格式配置文件
+        支持包含干扰因素的复杂标注
+        """
+        try:
+            import json
+            data = json.loads(content)
+            
+            if isinstance(data, dict):
+                annotations = {}
+                for key, value in data.items():
+                    try:
+                        hole_num = int(key)
+                        if 1 <= hole_num <= 120:
+                            # 如果值是字典，解析复杂标注
+                            if isinstance(value, dict):
+                                annotation_str = self._complex_annotation_to_string(value)
+                            else:
+                                annotation_str = str(value)
+                            annotations[hole_num] = annotation_str
+                    except ValueError:
+                        continue
+                
+                return annotations if annotations else None
+            
+        except Exception:
+            return None
+    
+    def _parse_format_enhanced(self, content: str) -> Optional[Dict[int, str]]:
+        """
+        解析增强格式: hole_number:complex_annotation
+        例如: 1:positive_with_artifacts, 2:negative_with_pores
+        """
+        try:
+            annotations = {}
+            lines = content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                if ':' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) == 2:
+                        try:
+                            hole_num = int(parts[0].strip())
+                            annotation = parts[1].strip()
+                            
+                            # 如果是复杂标注格式，直接使用
+                            if 1 <= hole_num <= 120:
+                                annotations[hole_num] = annotation
+                        except ValueError:
+                            continue
+            
+            return annotations if annotations else None
+            
+        except Exception:
+            return None
+    
+    def _complex_annotation_to_string(self, annotation_dict: dict) -> str:
+        """
+        将复杂标注字典转换为字符串
+        """
+        try:
+            growth_level = annotation_dict.get('growth_level', 'negative')
+            interference_factors = annotation_dict.get('interference_factors', [])
+            
+            # 构建标注字符串
+            if interference_factors:
+                # 支持中文和英文干扰因素
+                factors_str = '_'.join(interference_factors)
+                return f"{growth_level}_with_{factors_str}"
+            else:
+                return growth_level
+                
+        except Exception:
+            return str(annotation_dict)
     
     def _parse_format_1(self, content: str) -> Optional[Dict[int, str]]:
         """
@@ -232,11 +328,11 @@ class ConfigFileService:
                     annotation = annotations[hole_num]
                     f.write(f"{hole_num}:{annotation}\n")
             
-            print(f"配置文件保存成功: {config_file_path}")
+            log_info(f"配置文件保存成功: {config_file_path}", "CONFIG")
             return True
             
         except Exception as e:
-            print(f"保存配置文件失败: {e}")
+            log_error(f"保存配置文件失败: {e}", "CONFIG")
             return False
     
     def validate_annotation_format(self, annotation: str) -> Tuple[bool, str]:
