@@ -103,9 +103,31 @@ class FeatureCombination:
                 else:
                     print(f"警告: 未知的干扰因素: {f}")
         
+        # 处理生长模式 - 支持默认值映射
+        growth_pattern = None
+        if data.get('growth_pattern'):
+            pattern_str = data['growth_pattern']
+            try:
+                # 首先尝试直接创建枚举
+                growth_pattern = GrowthPattern(pattern_str)
+            except ValueError:
+                # 如果失败，处理特殊的默认值
+                default_pattern_mapping = {
+                    'default_positive': 'clustered',      # 默认阳性映射到聚集型
+                    'default_weak_growth': 'small_dots',  # 默认弱生长映射到小点状
+                }
+                if pattern_str in default_pattern_mapping:
+                    try:
+                        growth_pattern = GrowthPattern(default_pattern_mapping[pattern_str])
+                        print(f"映射默认生长模式: {pattern_str} -> {default_pattern_mapping[pattern_str]}")
+                    except ValueError:
+                        print(f"警告: 无法映射默认生长模式: {pattern_str}")
+                else:
+                    print(f"警告: 未知的生长模式: {pattern_str}")
+        
         return cls(
             growth_level=GrowthLevel(data['growth_level']),
-            growth_pattern=GrowthPattern(data['growth_pattern']) if data.get('growth_pattern') else None,
+            growth_pattern=growth_pattern,
             interference_factors=interference_factors,
             confidence=data.get('confidence', 1.0)
         )

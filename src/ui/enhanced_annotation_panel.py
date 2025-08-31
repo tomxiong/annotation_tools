@@ -407,8 +407,7 @@ class EnhancedAnnotationPanel:
             # 设置置信度
             self.current_confidence.set(combination.confidence)
             
-            print(f"[RESTORE] 设置特征组合: 级别={growth_level}, 模式={growth_pattern}")
-            
+                        
             # 重置干扰因素
             for var in self.interference_vars.values():
                 var.set(False)
@@ -416,26 +415,22 @@ class EnhancedAnnotationPanel:
             # 设置干扰因素 - 增强处理逻辑
             interference_count = 0
             for factor in combination.interference_factors:
-                print(f"[RESTORE] 处理干扰因素: {factor} (类型: {type(factor)})")
-                
+                                
                 # 情况1: 直接匹配面板中的干扰因素变量
                 if factor in self.interference_vars:
                     self.interference_vars[factor].set(True)
                     interference_count += 1
-                    print(f"[RESTORE] ✓ 直接设置干扰因素: {factor}")
-                
+                                    
                 # 情况2: 处理枚举类型的干扰因素
                 elif hasattr(factor, 'value'):
                     factor_value = factor.value
-                    print(f"[RESTORE] 枚举因素值: {factor_value}")
-                    
+                                        
                     # 尝试匹配面板中的变量
                     for panel_var_key, panel_var in self.interference_vars.items():
                         panel_var_value = panel_var_key.value if hasattr(panel_var_key, 'value') else panel_var_key
                         if panel_var_value == factor_value:
                             panel_var.set(True)
                             interference_count += 1
-                            print(f"[RESTORE] ✓ 通过枚举值设置干扰因素: {factor_value}")
                             break
                 
                 # 情况3: 处理字符串类型的干扰因素
@@ -446,16 +441,13 @@ class EnhancedAnnotationPanel:
                         if panel_var_value == factor:
                             panel_var.set(True)
                             interference_count += 1
-                            print(f"[RESTORE] ✓ 通过字符串匹配设置干扰因素: {factor}")
                             break
             
-            print(f"[RESTORE] 总共设置了 {interference_count} 个干扰因素")
-            
+                        
             self.update_pattern_options()
             self.update_interference_options()
             
-            print(f"[RESTORE] 特征组合设置完成")
-            
+                        
         except Exception as e:
             print(f"[ERROR] 设置特征组合失败: {e}")
             import traceback
@@ -512,7 +504,6 @@ class EnhancedAnnotationPanel:
         
         # 获取可区分的默认模式
         default_pattern = FeatureCombination.get_distinguishable_default_pattern(growth_level)
-        print(f"[INIT] 为生长级别 '{growth_level}' 获取默认模式: {default_pattern}")
         self.current_growth_pattern.set(default_pattern)
         
         # 根据参数决定是否重置干扰因素
@@ -554,7 +545,6 @@ class EnhancedAnnotationPanel:
         else:
             # 如果没有指定模式，使用可区分的默认模式
             default_pattern = FeatureCombination.get_distinguishable_default_pattern(growth_level)
-            print(f"[INIT] 未指定生长模式，使用默认模式: {default_pattern}")
             self.current_growth_pattern.set(default_pattern)
         
         # 根据参数决定是否重置干扰因素

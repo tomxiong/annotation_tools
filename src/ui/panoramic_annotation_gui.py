@@ -690,8 +690,7 @@ class PanoramicAnnotationGUI:
             self.window_resize_log.append(log_entry)
             
             # 打印日志
-            print(f"[WINDOW_RESIZE] {timestamp} - 窗口尺寸变化: {geometry} (实际: {event.width}x{event.height})")
-            
+                        
             # 限制日志长度，避免内存占用过多
             if len(self.window_resize_log) > 100:
                 self.window_resize_log = self.window_resize_log[-50:]
@@ -945,8 +944,7 @@ class PanoramicAnnotationGUI:
         """验证同步结果，必要时重试"""
         try:
             # Reduce verification logging frequency
-            print(f"[VERIFY] 验证同步结果 - 孔位{self.current_hole_number}")
-            
+                        
             # 再次更新统计和状态显示
             self.update_statistics()
             self.update_slice_info_display()
@@ -956,13 +954,12 @@ class PanoramicAnnotationGUI:
             if hasattr(self, 'stats_label'):
                 stats_text = self.stats_label.cget('text')
                 if not hasattr(self, '_last_verified_stats') or self._last_verified_stats != stats_text:
-                    print(f"[VERIFY] 统计更新: {stats_text}")
-                    self._last_verified_stats = stats_text
+                                        self._last_verified_stats = stats_text
             
             if hasattr(self, 'slice_info_label'):
                 slice_text = self.slice_info_label.cget('text')
                 if not hasattr(self, '_last_verified_info') or self._last_verified_info != slice_text:
-                    print(f"[VERIFY] 切片信息更新: {slice_text[:50]}...")  # Truncate long text
+                      # Truncate long text
                     self._last_verified_info = slice_text
                 
             print("[VERIFY] 验证同步完成")
@@ -1089,64 +1086,46 @@ class PanoramicAnnotationGUI:
                             dt = existing_ann.timestamp
                         self.last_annotation_time[annotation_key] = dt
                         print(f"[LOAD] 强制使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}")
-                        print(f"[TIMESTAMP] 来源: 保存的JSON文件 (annotation.timestamp)")
                     except Exception as e:
                         print(f"[ERROR] 时间戳解析失败: {e}")
                         # 解析失败时生成一个默认时间戳，但不使用可能错误的内存缓存
                         default_time = datetime.datetime.now()
                         self.last_annotation_time[annotation_key] = default_time
                         print(f"[LOAD] 生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
-                        print(f"[TIMESTAMP] 来源: 生成的默认时间 (解析失败)")
                 else:
                     # 如果标注对象没有时间戳属性，生成一个默认时间戳
                     default_time = datetime.datetime.now()
                     self.last_annotation_time[annotation_key] = default_time
                     print(f"[LOAD] 标注对象无时间戳，生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}")
-                    print(f"[TIMESTAMP] 来源: 生成的默认时间 (标注对象无时间戳属性)")
-            
+                                
             # 同步到增强标注面板 - 改进逻辑以处理所有手动标注
             if self.enhanced_annotation_panel:
-                print(f"[DEBUG] 检查增强标注面板同步 - 孔位{self.current_hole_number}")
-                print(f"[DEBUG] 标注源: {existing_ann.annotation_source}")
-                print(f"[DEBUG] 是否有enhanced_data属性: {hasattr(existing_ann, 'enhanced_data')}")
                 if hasattr(existing_ann, 'enhanced_data'):
-                    print(f"[DEBUG] enhanced_data内容: {existing_ann.enhanced_data}")
-                    print(f"[DEBUG] enhanced_data类型: {type(existing_ann.enhanced_data)}")
-                    print(f"[DEBUG] enhanced_data是否为空: {not existing_ann.enhanced_data}")
                     # Added: More detailed analysis of enhanced_data structure
                     if existing_ann.enhanced_data:
                         if isinstance(existing_ann.enhanced_data, dict):
-                            print(f"[DEBUG] enhanced_data包含字段: {list(existing_ann.enhanced_data.keys())}")
                             if 'feature_combination' in existing_ann.enhanced_data:
                                 fc_data = existing_ann.enhanced_data['feature_combination']
-                                print(f"[DEBUG] feature_combination数据: 级别={fc_data.get('growth_level')}, 模式={fc_data.get('growth_pattern')}")
-                        else:
-                            print(f"[WARNING] enhanced_data不是字典类型: {type(existing_ann.enhanced_data)}")
+                            else:
+                                print(f"[WARNING] enhanced_data不是字典类型: {type(existing_ann.enhanced_data)}")
                 
                 # 首先检查是否有增强标注数据
                 # 改进逻辑：如果有enhanced_data，就认为是增强标注，不管annotation_source是什么
                 if (hasattr(existing_ann, 'enhanced_data') and 
                     existing_ann.enhanced_data):
-                    print(f"[DEBUG] 条件满足，进入增强数据恢复流程")
                     try:
                         from models.enhanced_annotation import FeatureCombination
                         enhanced_data = existing_ann.enhanced_data
-                        
-                        print(f"[DEBUG] 原始增强数据: {enhanced_data}")
                         
                         # 确保enhanced_data是字典格式
                         if isinstance(enhanced_data, dict):
                             # 检查是否包含feature_combination数据
                             if 'feature_combination' in enhanced_data:
                                 combination_data = enhanced_data['feature_combination']
-                                print(f"[DEBUG] 特征组合数据: {combination_data}")
                             else:
                                 combination_data = enhanced_data
-                                print(f"[DEBUG] 直接使用增强数据: {combination_data}")
                             
-                            print(f"[DEBUG] 尝试从字典创建特征组合...")
                             combination = FeatureCombination.from_dict(combination_data)
-                            print(f"[DEBUG] 创建的特征组合: 级别={combination.growth_level}, 模式={combination.growth_pattern}")
                             
                             self.enhanced_annotation_panel.set_feature_combination(combination)
                             print(f"[LOAD] 已恢复增强标注数据 - 级别: {combination.growth_level}, 模式: {combination.growth_pattern}")
@@ -1188,21 +1167,17 @@ class PanoramicAnnotationGUI:
     def sync_basic_to_enhanced_annotation(self, annotation):
         """将基础标注同步到增强标注面板"""
         try:
-            print(f"[SYNC] 开始同步标注: 级别={annotation.growth_level}, 源={getattr(annotation, 'annotation_source', 'unknown')}")
-            
+                        
             # 检查是否有用户之前选择的growth_pattern
             user_growth_pattern = getattr(annotation, 'growth_pattern', None)
-            print(f"[SYNC] 检查用户生长模式: {user_growth_pattern}")
-            
+                        
             # 检查是否有干扰因素
             has_interference_factors = bool(annotation.interference_factors)
-            print(f"[SYNC] 检查干扰因素: {annotation.interference_factors}")
-            
+                        
             if self.enhanced_annotation_panel:
                 # 对于有干扰因素的标注，先初始化但不重置干扰因素
                 if has_interference_factors:
-                    print(f"[SYNC] 检测到干扰因素，初始化时保持现有设置")
-                    
+                                        
                     if user_growth_pattern:
                         self.enhanced_annotation_panel.initialize_with_pattern(
                             growth_level=annotation.growth_level,
@@ -1219,15 +1194,13 @@ class PanoramicAnnotationGUI:
                 else:
                     # 没有干扰因素的标注，正常初始化
                     if user_growth_pattern:
-                        print(f"[SYNC] 使用用户选择的生长模式: {user_growth_pattern}")
-                        self.enhanced_annotation_panel.initialize_with_pattern(
+                                                self.enhanced_annotation_panel.initialize_with_pattern(
                             growth_level=annotation.growth_level,
                             microbe_type=annotation.microbe_type,
                             growth_pattern=user_growth_pattern
                         )
                     else:
-                        print(f"[SYNC] 使用默认生长模式")
-                        self.enhanced_annotation_panel.initialize_with_defaults(
+                                                self.enhanced_annotation_panel.initialize_with_defaults(
                             growth_level=annotation.growth_level,
                             microbe_type=annotation.microbe_type
                         )
@@ -1252,20 +1225,15 @@ class PanoramicAnnotationGUI:
                         '污渍': InterferenceType.CONTAMINATION    # 污渍映射到污染
                     }
                     
-                    print(f"[SYNC] 开始设置干扰因素: {annotation.interference_factors}")
                     for factor in annotation.interference_factors:
                         if factor in interference_map:
                             mapped_factor = interference_map[factor]
                             if mapped_factor in self.enhanced_annotation_panel.interference_vars:
                                 self.enhanced_annotation_panel.interference_vars[mapped_factor].set(True)
-                                print(f"[SYNC] 设置干扰因素: {factor} -> {mapped_factor}")
-                            else:
-                                print(f"[SYNC] 警告: 找不到对应的干扰因素变量: {mapped_factor}")
                         else:
-                            print(f"[SYNC] 警告: 无法映射干扰因素: {factor}")
-                
-                print(f"[SYNC] 同步完成")
-            
+                            print(f"[WARNING] 未映射的干扰因素: {factor}")
+                                            
+                            
         except Exception as e:
             print(f"[ERROR] 同步基础标注到增强面板失败: {e}")
             import traceback
@@ -1817,9 +1785,8 @@ class PanoramicAnnotationGUI:
                     print(f"[SAVE] ✓ enhanced_data设置成功")
                     if 'feature_combination' in annotation.enhanced_data:
                         fc_data = annotation.enhanced_data['feature_combination']
-                        print(f"[VERIFY] 保存的特征: 级别={fc_data.get('growth_level')}, 模式={fc_data.get('growth_pattern')}")
-                else:
-                    print(f"[SAVE] ❌ enhanced_data设置失败或为空")
+                    else:
+                        print(f"[SAVE] ❌ enhanced_data设置失败或为空")
                     
             else:
                 # 基础标注模式（向后兼容）
@@ -1872,15 +1839,13 @@ class PanoramicAnnotationGUI:
             # 验证标注是否正确保存
             saved_ann = self.current_dataset.get_annotation_by_hole(self.current_panoramic_id, self.current_hole_number)
             if saved_ann:
-                print(f"[VERIFY] 标注已保存 - 源: {saved_ann.annotation_source}, 级别: {saved_ann.growth_level}")
                 if hasattr(saved_ann, 'enhanced_data') and saved_ann.enhanced_data:
-                    print(f"[VERIFY] enhanced_data内容: True")
                     if 'feature_combination' in saved_ann.enhanced_data:
                         fc = saved_ann.enhanced_data['feature_combination']
-                        print(f"[VERIFY] 保存的特征: 级别={fc.get('growth_level')}, 模式={fc.get('growth_pattern')}")
+                    else:
+                        print(f"[SAVE] saved_ann缺少feature_combination")
                 else:
-                    print(f"[VERIFY] enhanced_data为空: {type(getattr(saved_ann, 'enhanced_data', None))}")
-            
+                    print(f"[SAVE] saved_ann无enhanced_data")
             print("[SAVE] 保存后更新完成")
             
             # 重置修改标记
