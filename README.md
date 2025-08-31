@@ -2,6 +2,38 @@
 
 A specialized GUI application for annotating panoramic images in microbiological susceptibility testing. The tool provides precise navigation through 120-well plates (12×10 grid) and comprehensive annotation capabilities.
 
+## 📦 Packaging and Distribution
+
+The project includes comprehensive packaging capabilities for creating standalone executables:
+
+### Pre-built Executables
+- **Location**: `release/` directory
+- **GUI Version**: `PanoramicAnnotationTool.exe` (69.5 MB)
+- **CLI Version**: `annotation-cli.exe` (74.7 MB)
+- **Usage**: Run directly without Python environment
+
+### Building from Source
+Complete packaging tools are available in the `package/` directory:
+- **PACKAGING_GUIDE.md**: Detailed packaging instructions
+- **fixed_gui.spec**: PyInstaller configuration for GUI
+- **fixed_build.py**: Automated build script
+- **hook-tkinter.py**: Custom PyInstaller hooks
+
+### Build Commands
+```bash
+# Using the automated build script
+python build.py
+
+# Using PyInstaller directly
+pyinstaller gui.spec
+```
+
+### Distribution Features
+- **Standalone**: No Python installation required
+- **Cross-platform**: Windows executable with proper dependencies
+- **Optimized**: UPX compression for smaller file size
+- **Complete**: Includes all necessary libraries and resources
+
 ## 📂 Project Structure
 
 After cleanup, the project has a clean, organized structure:
@@ -14,26 +46,45 @@ After cleanup, the project has a clean, organized structure:
 │   ├── services/               # Image and configuration services
 │   ├── models/                 # Data models and annotations
 │   └── core/                   # Core utilities (config, logger)
+├── gui.spec                    # PyInstaller configuration for GUI
+├── build.py                    # Automated build script
+├── tkinter_hook.py             # Custom PyInstaller hooks
 ├── tools/                      # Development utilities
-│   ├── testing/                # Test utilities
-│   ├── cli/                    # CLI tools
-│   ├── demo/                   # Demo scripts
-│   └── build/                  # Build scripts
+│   └── demo/                   # Demo scripts and examples
 ├── docs/                       # Documentation
-├── archive/                    # Archived files and reports
+├── archive/                    # Archived files and samples
+│   ├── batch_files/            # Batch processing scripts
+│   └── json_files/             # Sample JSON files
 ├── tests/                      # Unit tests
-├── venv/                       # Python virtual environment
+├── release/                    # Pre-built executables
+│   ├── PanoramicAnnotationTool.exe  # GUI executable
+│   ├── annotation-cli.exe      # CLI executable
+│   └── README.txt              # Release notes
 ├── run_gui.py                  # Main GUI launcher
-├── start_gui.bat               # Windows launcher script
-├── start_gui.sh                # Linux/Mac launcher script
+├── run_cli.py                  # CLI launcher
+├── requirements.txt            # Project dependencies
 ├── README.md                   # This file
 └── INSTALL.md                  # Installation guide
 ```
 
 ## 🚀 Quick Start
 
-### 1. Environment Setup
+### Option 1: Using Pre-built Executables (Recommended for End Users)
 
+```bash
+# Navigate to release directory
+cd annotation_tools/release
+
+# Run GUI version (double-click in Windows Explorer)
+PanoramicAnnotationTool.exe
+
+# Run CLI version
+annotation-cli.exe --help
+```
+
+### Option 2: Running from Source (Developers)
+
+#### Environment Setup
 ```bash
 # Navigate to project directory
 cd annotation_tools
@@ -44,28 +95,21 @@ venv\Scripts\activate  # Windows
 # source venv/bin/activate  # Linux/Mac
 
 # Install dependencies
-pip install -e .
+pip install -r requirements.txt
 ```
 
-### 2. Launch the GUI Application
-
-#### Method 1: Direct Launch (Recommended)
+#### Launch the GUI Application
 ```bash
-# Ensure virtual environment is activated
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+# Using the launcher script (recommended)
+python run_gui.py
 
-# Launch the main GUI
+# Direct launch
 python src/ui/panoramic_annotation_gui.py
 ```
 
-#### Method 2: Using Launcher Scripts
+#### Launch the CLI Application
 ```bash
-# Windows
-start_gui.bat
-
-# Linux/Mac
-./start_gui.sh
+python run_cli.py --help
 ```
 
 ### 3. Using the Application
@@ -96,29 +140,75 @@ start_gui.bat
 
 The project includes organized development utilities:
 
+### Core Tools
 - **run_gui.py**: Main GUI launcher script
-- **start_gui.bat/sh**: Platform-specific launcher scripts
-- **tools/testing/**: Testing utilities and verification scripts
-- **tools/cli/**: Command-line interface tools
-- **tools/demo/**: Demo scripts and examples
-- **tools/build/**: Build and setup scripts
+- **run_cli.py**: CLI launcher script
+- **requirements.txt**: Project dependencies
+
+### Packaging Tools
+- **gui.spec**: PyInstaller configuration for GUI
+- **build.py**: Automated build script
+- **tkinter_hook.py**: Custom PyInstaller hooks
+- **docs/PACKAGING_GUIDE.md**: Comprehensive packaging guide
+
+### Demo and Examples (`tools/demo/`)
+- **demo.py**: Main demo script
+- **examples/**: Quick start examples
+- **run_demo.bat/sh**: Demo launchers
+
+### Testing (`tests/`)
+- **unit/**: Unit tests for core functionality
 
 ## 📖 Documentation
 
-Detailed documentation is available in the `docs/` directory:
+### Core Documentation
+- **Installation guide**: `INSTALL.md`
+- **Project README**: `README.md` (this file)
+- **Development environment**: `DEVELOPMENT_ENVIRONMENT.md`
 
-- Installation guide: `INSTALL.md`
-- Project documentation: `docs/`
-- Cleanup reports: `final_cleanup_report.md`
+### Packaging Documentation (`package/`)
+- **PACKAGING_GUIDE.md**: Comprehensive packaging guide
+- Build configurations and scripts
+
+### Additional Documentation (`docs/`)
+- **ENVIRONMENT_SETUP_STEPS.md**: Environment setup guide
+- **FUNCTIONALITY_TESTING_GUIDE.md**: Testing procedures
+- **GUI_ENVIRONMENT_SETUP_GUIDE.md**: GUI setup guide
+- **STARTUP_GUIDE.md**: Application startup guide
+- **batch_annotation_solution.md**: Batch processing documentation
+
+### Archived Documentation (`archive/`)
+- Historical documents and analysis reports
+- Sample files and batch processing scripts
 
 ## 🧪 Testing
 
+### Unit Tests
 ```bash
-# Run unit tests
-python -m pytest tests/unit
+# Run all unit tests
+python -m pytest tests/unit/
 
-# Run GUI verification
-python tools/testing/final_verification.py
+# Run specific test
+python -m pytest tests/unit/test_annotation.py
+```
+
+### Demo Testing
+```bash
+# Run the main demo
+python tools/demo/demo.py
+
+# Run quick start examples
+python tools/demo/examples/quick_start.py
+```
+
+### Executable Testing
+```bash
+# Test pre-built GUI executable
+cd release
+PanoramicAnnotationTool.exe
+
+# Test pre-built CLI executable
+annotation-cli.exe --help
 ```
 
 ## 🔧 Configuration

@@ -2,34 +2,52 @@
 
 block_cipher = None
 
-# 分析主程序需要的隐藏导入
+# Additional hidden imports for tkinter and standard library modules
 hidden_imports = [
+    'tkinter',
+    'tkinter.ttk',
+    'tkinter.filedialog',
+    'tkinter.messagebox', 
+    'tkinter.font',
+    'tkinter.colorchooser',
+    'tkinter.scrolledtext',
     'PIL._tkinter_finder',
     'cv2',
     'numpy',
     'yaml',
     'PIL.Image',
-    'PIL.ImageTk', 
+    'PIL.ImageTk',
     'PIL.ImageDraw',
     'PIL.ImageFont',
-    'tkinter.filedialog',
-    'tkinter.messagebox',
-    'tkinter.ttk',
-    'tkinter.colorchooser'
+    # Standard library modules that might be missed
+    'logging.handlers',
+    'logging.config',
+    'json',
+    'pathlib',
+    'datetime',
+    'dataclasses',
+    'enum',
+    'typing',
+    'os',
+    'sys',
+    'threading',
+    'subprocess',
+    'shutil',
+    'tempfile',
+    'argparse'
 ]
 
-# 收集数据文件
+# Data files to include
 datas = [
     ('src', 'src'),
     ('config', 'config'),
-    ('docs', 'docs'),
-    ('logs', 'logs')
+    ('docs', 'docs')
 ]
 
-# 排除不需要的模块
+# Modules to exclude
 excludes = [
     'matplotlib',
-    'scipy', 
+    'scipy',
     'pandas',
     'pytest',
     'unittest',
@@ -43,7 +61,7 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=hidden_imports,
-    hookspath=[],
+    hookspath=['.'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=excludes,
@@ -53,7 +71,6 @@ a = Analysis(
     noarchive=False
 )
 
-# 创建可执行文件
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -63,7 +80,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='全景图像标注工具',
+    name='PanoramicAnnotationTool',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -75,21 +92,5 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    entitlements_file=None,
-    icon=None,
-    version='version.txt' if os.path.exists('version.txt') else None
+    entitlements_file=None
 )
-
-# 如果需要创建目录版本而不是单文件版本，取消下面的注释
-"""
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='全景图像标注工具'
-)
-"""
