@@ -279,7 +279,7 @@ class ConfigFileService:
                     parts = line.split(',', 1)
                     if len(parts) == 2:
                         filename = parts[0].strip()
-                        symbols = parts[1].strip()
+                        symbols = parts[1]  # 不去除符号串的空格，保持原始格式
                         
                         # 解析符号串，每个符号对应一个孔位
                         for i, symbol in enumerate(symbols):
@@ -296,6 +296,8 @@ class ConfigFileService:
                                 annotations[hole_num] = 'uncertain'
                             elif symbol == 'w' or symbol == 'W':
                                 annotations[hole_num] = 'weak_growth'
+                            elif symbol == ' ':
+                                annotations[hole_num] = 'invalid'
                             # 其他符号忽略或设为未标注
                         
                         return annotations if annotations else None

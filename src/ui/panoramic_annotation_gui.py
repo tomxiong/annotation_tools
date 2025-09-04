@@ -64,6 +64,12 @@ class PanoramicAnnotationGUI:
         self.root.geometry("1600x900")   # 目标尺寸1600x900
         self.root.minsize(1400, 800)     # 保持最小尺寸
         
+        # 绑定日志方法到实例
+        self.log_debug = log_debug
+        self.log_info = log_info
+        self.log_warning = log_warning
+        self.log_error = log_error
+        
         # 服务和管理器
         self.image_service = PanoramicImageService()
         self.hole_manager = HoleManager()
@@ -852,14 +858,21 @@ class PanoramicAnnotationGUI:
     def load_current_slice(self):
         """加载当前切片"""
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            self.log_debug("load_current_slice: 没有文件或索引超出范围")
             return
         
         current_file = self.slice_files[self.current_slice_index]
+        self.log_debug(f"load_current_slice: 当前文件 {current_file.get('filepath', 'Unknown')}")
         
         try:
             # 检查全景图是否改变
+            old_panoramic_id = getattr(self, 'current_panoramic_id', None)
+            new_panoramic_id = current_file['panoramic_id']
             panoramic_changed = (not hasattr(self, 'current_panoramic_id') or 
                               self.current_panoramic_id != current_file['panoramic_id'])
+            
+            self.log_debug(f"load_current_slice: 旧全景图ID {old_panoramic_id}, 新全景图ID {new_panoramic_id}")
+            self.log_debug(f"load_current_slice: 全景图是否改变 {panoramic_changed}")
             
             # 更新当前信息
             self.current_panoramic_id = current_file['panoramic_id']
@@ -900,12 +913,13 @@ class PanoramicAnnotationGUI:
                     y = canvas_height // 2
                     self.slice_canvas.create_image(x, y, image=self.slice_photo)
             
-            # 加载对应的全景图（仅在全景图改变时）
-            if panoramic_changed:
-                self.load_panoramic_image()
-            else:
-                # 即使全景图没有改变，也要更新当前孔位指示框
-                self.draw_current_hole_indicator()
+            # 加载对应的全景图（强制每次都加载以确保刷新）
+            self.log_debug(f"load_current_slice: 强制调用load_panoramic_image (panoramic_changed={panoramic_changed})")
+            self.load_panoramic_image()
+            self.log_debug("load_current_slice: load_panoramic_image调用完成")
+            
+            # 更新当前孔位指示框
+            self.draw_current_hole_indicator()
             
             # 更新切片信息，包含标注状态
             self.update_slice_info_display()
@@ -1007,6 +1021,24 @@ class PanoramicAnnotationGUI:
         if not self.current_panoramic_id:
             return
         
+        # 检查画布是否准备就绪
+        if not self._is_canvas_ready():
+            # 初始化重试计数器
+            if not hasattr(self, '_panoramic_load_retry_count'):
+                self._panoramic_load_retry_count = 0
+            
+            # 限制重试次数
+            if self._panoramic_load_retry_count < 5:
+                self._panoramic_load_retry_count += 1
+                log_debug(f"画布未准备就绪，延迟重试 ({self._panoramic_load_retry_count}/5)", "LOAD_PANORAMIC")
+                self.root.after(100, self.load_panoramic_image)
+                return
+            else:
+                log_debug("画布重试次数已达上限，使用默认尺寸", "LOAD_PANORAMIC")
+        
+        # 重置重试计数器
+        self._reset_panoramic_load_retry()
+        
         # 记录加载全景图前的窗口状态
         import time
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1067,7 +1099,15 @@ class PanoramicAnnotationGUI:
                 canvas_width = self.panoramic_canvas.winfo_width()
                 canvas_height = self.panoramic_canvas.winfo_height()
                 
+                # 记录画布尺寸用于调试
+                log_debug(f"画布尺寸: {canvas_width}x{canvas_height}", "LOAD_PANORAMIC")
+                
                 # 使用实际画布尺寸，留少量边距 - 适应新的1240px宽度
+                # 如果画布尺寸无效，使用默认尺寸
+                if canvas_width <= 1 or canvas_height <= 1:
+                    log_debug(f"画布尺寸无效，使用默认尺寸", "LOAD_PANORAMIC")
+                    canvas_width, canvas_height = 1220, 750
+                
                 target_width = max(canvas_width - 40, 1220)  # 最小1220px宽度，适应右侧360px面板
                 target_height = max(canvas_height - 40, 750)  # 最小750px高度
                 
@@ -1088,7 +1128,14 @@ class PanoramicAnnotationGUI:
                 # 更新全景图信息
                 self.panoramic_info_label.config(text=f"全景图: {self.current_panoramic_id} ({self.panoramic_image.width}×{self.panoramic_image.height})")
             
+        except FileNotFoundError as e:
+            log_debug(f"全景图文件未找到: {str(e)}", "LOAD_PANORAMIC")
+            self.panoramic_info_label.config(text=f"文件未找到: {self.current_panoramic_id}")
+        except PermissionError as e:
+            log_debug(f"全景图文件权限错误: {str(e)}", "LOAD_PANORAMIC")
+            self.panoramic_info_label.config(text=f"文件权限错误: {self.current_panoramic_id}")
         except Exception as e:
+            log_debug(f"加载全景图失败: {str(e)}", "LOAD_PANORAMIC")
             print(f"加载全景图失败: {str(e)}")
             self.panoramic_info_label.config(text=f"加载全景图失败: {self.current_panoramic_id}")
         
@@ -1116,6 +1163,21 @@ class PanoramicAnnotationGUI:
         # 清除配置数据缓存，强制重新加载新全景图的配置
         if hasattr(self, '_config_data_cache'):
             self._config_data_cache.clear()
+    
+    def _is_canvas_ready(self):
+        """检查画布是否准备就绪"""
+        try:
+            canvas_width = self.panoramic_canvas.winfo_width()
+            canvas_height = self.panoramic_canvas.winfo_height()
+            return canvas_width > 1 and canvas_height > 1
+        except Exception as e:
+            log_debug(f"检查画布状态失败: {e}", "LOAD_PANORAMIC")
+            return False
+    
+    def _reset_panoramic_load_retry(self):
+        """重置全景图加载重试计数器"""
+        if hasattr(self, '_panoramic_load_retry_count'):
+            self._panoramic_load_retry_count = 0
     
     def _parse_annotation_string(self, annotation_str: str) -> dict:
         """
