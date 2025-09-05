@@ -5,7 +5,14 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Any
+from enum import Enum
+
+# 视图模式枚举
+class ViewMode(Enum):
+    MANUAL = "人工"
+    MODEL = "模型"
+    CFG = "CFG"
 
 
 class HoleConfigPanel:
@@ -14,6 +21,10 @@ class HoleConfigPanel:
     def __init__(self, parent: tk.Widget, apply_callback: Callable):
         self.parent = parent
         self.apply_callback = apply_callback
+        
+        # 视图模式相关
+        self.current_view_mode = ViewMode.MANUAL
+        self.view_change_callbacks = []
         
         # 配置变量
         self.hole_x_var = tk.StringVar(value="750")
@@ -30,6 +41,9 @@ class HoleConfigPanel:
         """创建配置面板"""
         self.config_frame = ttk.LabelFrame(self.parent, text="孔位定位配置")
         self.config_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0))
+        
+        # 视图模式选择
+        self.create_view_mode_section()
         
         # 第一个孔位坐标
         self.create_coordinate_section()
@@ -49,6 +63,29 @@ class HoleConfigPanel:
         
         # 说明信息
         self.create_info_section()
+    
+    def create_view_mode_section(self):
+        """创建视图模式选择区域"""
+        view_frame = ttk.LabelFrame(self.config_frame, text="视图模式")
+        view_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.view_mode_var = tk.StringVar(value=ViewMode.MANUAL.value)
+        
+        # 视图模式单选按钮
+        mode_frame = ttk.Frame(view_frame)
+        mode_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.manual_radio = ttk.Radiobutton(mode_frame, text="人工", variable=self.view_mode_var, 
+                                          value=ViewMode.MANUAL.value, command=self._on_view_mode_changed)
+        self.manual_radio.pack(side=tk.LEFT, padx=5)
+        
+        self.model_radio = ttk.Radiobutton(mode_frame, text="模型", variable=self.view_mode_var, 
+                                         value=ViewMode.MODEL.value, command=self._on_view_mode_changed)
+        self.model_radio.pack(side=tk.LEFT, padx=5)
+        
+        self.cfg_radio = ttk.Radiobutton(mode_frame, text="CFG", variable=self.view_mode_var, 
+                                       value=ViewMode.CFG.value, command=self._on_view_mode_changed)
+        self.cfg_radio.pack(side=tk.LEFT, padx=5)
     
     def create_coordinate_section(self):
         """创建坐标配置区域"""
@@ -124,6 +161,57 @@ class HoleConfigPanel:
                   command=self.apply_config).pack(fill=tk.X, pady=2)
         ttk.Button(button_frame, text="重置默认", 
                   command=self.reset_config).pack(fill=tk.X, pady=2)
+        
+        # 模型建议操作区域
+        self._create_suggestion_panel()
+        
+    def _create_suggestion_panel(self):
+        """创建模型建议操作面板"""
+        self.suggestion_frame = ttk.LabelFrame(self.config_frame, text="模型建议操作")
+        self.suggestion_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 当前孔位信息
+        info_frame = ttk.Frame(self.suggestion_frame)
+        info_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(info_frame, text="当前孔位:").pack(side=tk.LEFT)
+        self.current_hole_label = ttk.Label(info_frame, text="未选择", foreground="blue")
+        self.current_hole_label.pack(side=tk.LEFT, padx=5)
+        
+        # 模型建议显示
+        suggestion_display_frame = ttk.Frame(self.suggestion_frame)
+        suggestion_display_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(suggestion_display_frame, text="模型建议:").pack(anchor=tk.W)
+        
+        # 建议内容文本框
+        self.suggestion_text = tk.Text(suggestion_display_frame, height=4, width=30, wrap=tk.WORD, state=tk.DISABLED)
+        self.suggestion_text.pack(fill=tk.X, pady=2)
+        
+        # 置信度显示
+        confidence_frame = ttk.Frame(self.suggestion_frame)
+        confidence_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(confidence_frame, text="模型置信度:").pack(side=tk.LEFT)
+        self.confidence_label = ttk.Label(confidence_frame, text="--", foreground="green")
+        self.confidence_label.pack(side=tk.LEFT, padx=5)
+        
+        # 操作按钮
+        action_frame = ttk.Frame(self.suggestion_frame)
+        action_frame.pack(fill=tk.X, padx=5, pady=10)
+        
+        self.adopt_button = ttk.Button(action_frame, text="采纳建议", command=self._adopt_suggestion, state=tk.DISABLED)
+        self.adopt_button.pack(side=tk.LEFT, padx=5)
+        
+        self.reject_button = ttk.Button(action_frame, text="拒绝建议", command=self._reject_suggestion, state=tk.DISABLED)
+        self.reject_button.pack(side=tk.LEFT, padx=5)
+        
+        # 状态显示
+        self.adoption_status_label = ttk.Label(self.suggestion_frame, text="", foreground="gray")
+        self.adoption_status_label.pack(pady=5)
+        
+        # 初始状态下隐藏建议面板
+        self.suggestion_frame.pack_forget()
     
     def create_info_section(self):
         """创建说明信息区域"""
@@ -199,3 +287,84 @@ class HoleConfigPanel:
             self.hole_size_var.set(str(config['hole_size']))
         if 'start_hole' in config:
             self.start_hole_var.set(str(config['start_hole']))
+    
+    def _on_view_mode_changed(self):
+        """视图模式变更回调"""
+        mode_value = self.view_mode_var.get()
+        for mode in ViewMode:
+            if mode.value == mode_value:
+                self.current_view_mode = mode
+                break
+        
+        # 根据视图模式显示/隐藏建议面板
+        if self.current_view_mode == ViewMode.MODEL:
+            self.suggestion_frame.pack(fill=tk.X, padx=5, pady=5)
+        else:
+            self.suggestion_frame.pack_forget()
+        
+        # 通知所有注册的回调函数
+        for callback in self.view_change_callbacks:
+            callback(self.current_view_mode)
+    
+    def _adopt_suggestion(self):
+        """采纳建议"""
+        # TODO: 实现采纳建议的逻辑
+        self.adoption_status_label.config(text="已采纳建议", foreground="green")
+        self.adopt_button.config(state=tk.DISABLED)
+        self.reject_button.config(state=tk.DISABLED)
+    
+    def _reject_suggestion(self):
+        """拒绝建议"""
+        # TODO: 实现拒绝建议的逻辑
+        self.adoption_status_label.config(text="已拒绝建议", foreground="red")
+        self.adopt_button.config(state=tk.DISABLED)
+        self.reject_button.config(state=tk.DISABLED)
+    
+    def update_suggestion(self, hole_id: str, suggestion: str, confidence: float):
+        """更新模型建议"""
+        self.current_hole_label.config(text=hole_id)
+        
+        self.suggestion_text.config(state=tk.NORMAL)
+        self.suggestion_text.delete(1.0, tk.END)
+        self.suggestion_text.insert(tk.END, suggestion)
+        self.suggestion_text.config(state=tk.DISABLED)
+        
+        self.confidence_label.config(text=f"{confidence:.1%}")
+        
+        # 启用操作按钮
+        self.adopt_button.config(state=tk.NORMAL)
+        self.reject_button.config(state=tk.NORMAL)
+        
+        # 清除状态显示
+        self.adoption_status_label.config(text="")
+    
+    def clear_suggestion(self):
+        """清除建议显示"""
+        self.current_hole_label.config(text="未选择")
+        
+        self.suggestion_text.config(state=tk.NORMAL)
+        self.suggestion_text.delete(1.0, tk.END)
+        self.suggestion_text.config(state=tk.DISABLED)
+        
+        self.confidence_label.config(text="--")
+        
+        # 禁用操作按钮
+        self.adopt_button.config(state=tk.DISABLED)
+        self.reject_button.config(state=tk.DISABLED)
+        
+        # 清除状态显示
+        self.adoption_status_label.config(text="")
+    
+    def add_view_change_callback(self, callback: Callable[[ViewMode], None]):
+        """添加视图模式变更回调函数"""
+        self.view_change_callbacks.append(callback)
+    
+    def get_current_view_mode(self) -> ViewMode:
+        """获取当前视图模式"""
+        return self.current_view_mode
+    
+    def set_view_mode(self, mode: ViewMode):
+        """设置视图模式"""
+        self.view_mode_var.set(mode.value)
+        self.current_view_mode = mode
+        self._on_view_mode_changed()

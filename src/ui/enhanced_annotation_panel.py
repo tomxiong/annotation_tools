@@ -140,11 +140,17 @@ class EnhancedAnnotationPanel:
         self.parent = parent
         self.on_annotation_change = on_annotation_change
         
+        # 视图模式相关状态
+        self.current_view_mode = None
+        self.current_hole_manager = None
+        self.current_slice_index = None
+        
         # 当前标注状态
         self.current_microbe_type = tk.StringVar(value="bacteria")
         self.current_growth_level = tk.StringVar(value="negative")
         self.current_growth_pattern = tk.StringVar(value="")
         self.current_confidence = tk.DoubleVar(value=0.95)
+        self.confidence_var = tk.IntVar(value=95)  # 置信度变量，用于模型建议
         
         # 干扰因素状态
         self.interference_vars = {
@@ -299,8 +305,12 @@ class EnhancedAnnotationPanel:
         self.current_growth_level.trace('w', lambda *args: self.on_growth_level_change())
         self.current_growth_pattern.trace('w', lambda *args: self.on_pattern_change())
         
-    def update_pattern_options(self):
-        """更新生长模式选项"""
+    def update_pattern_options(self, preserve_current=False):
+        """更新生长模式选项
+        
+        Args:
+            preserve_current: 是否保持当前选择不变（用于加载模型建议时）
+        """
         growth_level = self.current_growth_level.get()
         microbe_type = self.current_microbe_type.get()
         
@@ -314,7 +324,7 @@ class EnhancedAnnotationPanel:
         
         # 获取当前级别的可用选项
         available_patterns = pattern_options.get(growth_level, [])
-        log_debug(f"生长级别: {growth_level}, 可用模式: {available_patterns}", "UI")
+        log_debug(f"生长级别: {growth_level}, 可用模式: {available_patterns}, 保持当前选择: {preserve_current}", "UI")
         
         # 更新按钮显示状态
         visible_count = 0
@@ -329,13 +339,18 @@ class EnhancedAnnotationPanel:
         
         log_debug(f"显示模式按钮数量: {visible_count}/{len(self.pattern_buttons)}", "UI")
         
-        # 重置当前选择到第一个可用选项
-        if available_patterns:
-            current_pattern = self.current_growth_pattern.get()
-            if current_pattern not in available_patterns:
-                self.current_growth_pattern.set(available_patterns[0])
+        # 只有在不保持当前选择时才重置
+        if not preserve_current:
+            # 重置当前选择到第一个可用选项
+            if available_patterns:
+                current_pattern = self.current_growth_pattern.get()
+                if current_pattern not in available_patterns:
+                    log_debug(f"当前模式 {current_pattern} 不在可用列表中，重置为 {available_patterns[0]}", "UI")
+                    self.current_growth_pattern.set(available_patterns[0])
+            else:
+                self.current_growth_pattern.set("")
         else:
-            self.current_growth_pattern.set("")
+            log_debug(f"保持当前模式选择: {self.current_growth_pattern.get()}", "UI")
     
     def update_interference_options(self):
         """更新干扰因素选项"""
@@ -552,8 +567,8 @@ class EnhancedAnnotationPanel:
         # 设置默认置信度
         self.current_confidence.set(1.0)
         
-        # 更新界面选项
-        self.update_pattern_options()
+        # 更新界面选项（保持当前选择不变）
+        self.update_pattern_options(preserve_current=True)
         self.update_interference_options()
     
     def initialize_with_pattern(self, growth_level: str = "negative", microbe_type: str = "bacteria", growth_pattern: str = "", reset_interference: bool = True):
@@ -670,3 +685,484 @@ class EnhancedAnnotationPanel:
     def get_frame(self) -> ttk.Frame:
         """获取主框架"""
         return self.main_frame
+    
+    def on_view_mode_changed(self, view_mode, hole_manager=None, slice_index=None):
+        """响应视图模式切换"""
+        try:
+            self.current_view_mode = view_mode
+            self.current_hole_manager = hole_manager
+            self.current_slice_index = slice_index
+            
+            log_debug(f"视图模式切换: {view_mode}, 切片索引: {slice_index}", "VIEW_MODE")
+            
+            # 根据视图模式更新界面状态
+            if view_mode == "slice" and hole_manager and slice_index is not None:
+                # 切片视图模式 - 启用所有标注功能
+                self.main_frame.config(state="normal")
+                
+                # 尝试加载当前切片的标注数据
+                try:
+                    slice_annotation = hole_manager.get_slice_annotation(slice_index)
+                    if slice_annotation and hasattr(slice_annotation, 'enhanced_data'):
+                        enhanced_data = slice_annotation.enhanced_data
+                        if enhanced_data:
+                            log_debug(f"加载切片 {slice_index} 的增强标注数据", "ANNOTATION")
+                            self.set_feature_combination(enhanced_data)
+                        else:
+                            # 使用默认值初始化
+                            self.initialize_with_defaults("negative", "bacteria", True)
+                    else:
+                        # 使用默认值初始化
+                        self.initialize_with_defaults("negative", "bacteria", True)
+                except Exception as e:
+                     log_warning(f"加载切片标注数据失败: {e}", "ANNOTATION")
+                     self.initialize_with_defaults("negative", "bacteria", True)
+                     
+            elif ((isinstance(view_mode, str) and view_mode in ["model", "模型"]) or 
+                  (hasattr(view_mode, 'value') and view_mode.value in ["模型", "model"]) or
+                  (hasattr(view_mode, 'name') and view_mode.name == 'MODEL')) and hole_manager and slice_index is not None:
+                # 模型视图模式 - 显示模型建议数据
+                 
+                 try:
+                     # 获取模型建议数据
+                     log_debug(f"=== 开始切换到模型视图 - 切片 {slice_index} ===", "VIEW_MODE")
+                     suggestion = hole_manager.get_hole_suggestion(slice_index)
+                     log_debug(f"获取到的建议数据: {suggestion}", "VIEW_MODE")
+                     
+                     if suggestion:
+                         log_debug(f"加载切片 {slice_index} 的模型建议数据", "MODEL")
+                         log_debug(f"调用load_model_suggestion前的界面状态:", "VIEW_MODE")
+                         log_debug(f"  - 生长级别: {self.current_growth_level.get()}", "VIEW_MODE")
+                         log_debug(f"  - 生长模式: {self.current_growth_pattern.get()}", "VIEW_MODE")
+                         
+                         self.load_model_suggestion(suggestion)
+                         
+                         log_debug(f"调用load_model_suggestion后的界面状态:", "VIEW_MODE")
+                         log_debug(f"  - 生长级别: {self.current_growth_level.get()}", "VIEW_MODE")
+                         log_debug(f"  - 生长模式: {self.current_growth_pattern.get()}", "VIEW_MODE")
+                     else:
+                         log_debug(f"切片 {slice_index} 无模型建议数据", "MODEL")
+                         self.initialize_with_defaults("negative", "bacteria", True)
+                     
+                     log_debug(f"=== 模型视图切换完成 - 切片 {slice_index} ===", "VIEW_MODE")
+                 except Exception as e:
+                     log_warning(f"加载模型建议数据失败: {e}", "MODEL")
+                     import traceback
+                     log_error(f"异常详情: {traceback.format_exc()}", "MODEL")
+                     self.initialize_with_defaults("negative", "bacteria", True)
+                     
+            elif ((isinstance(view_mode, str) and view_mode in ["manual", "人工"]) or 
+                  (hasattr(view_mode, 'value') and view_mode.value in ["人工", "manual"]) or
+                  (hasattr(view_mode, 'name') and view_mode.name == 'MANUAL')) and hole_manager and slice_index is not None:
+                # 人工视图模式 - 恢复人工标注数据
+                 
+                 try:
+                     log_debug(f"=== 开始切换到人工视图 - 切片 {slice_index} ===", "VIEW_MODE")
+                     self.load_manual_annotation(hole_manager, slice_index)
+                     log_debug(f"=== 人工视图切换完成 - 切片 {slice_index} ===", "VIEW_MODE")
+                 except Exception as e:
+                     log_warning(f"加载人工标注数据失败: {e}", "MANUAL")
+                     import traceback
+                     log_error(f"异常详情: {traceback.format_exc()}", "MANUAL")
+                     self.initialize_with_defaults("negative", "bacteria", True)
+                     
+            elif view_mode == "overview":
+                 # 概览视图模式 - 禁用标注功能或显示汇总信息
+                 self.main_frame.config(state="disabled")
+                 log_debug("概览模式 - 标注面板已禁用", "VIEW_MODE")
+                 
+            else:
+                 # 其他模式 - 重置到默认状态
+                 self.reset_to_default()
+                 log_debug("未知视图模式 - 重置标注面板", "VIEW_MODE")
+                
+        except Exception as e:
+             log_error(f"视图模式切换处理失败: {e}", "ERROR")
+             import traceback
+             log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
+     
+
+     
+    def reset_to_default(self):
+          """重置到默认状态"""
+          self.initialize_with_defaults("negative", "bacteria", True)
+     
+    def load_manual_annotation(self, hole_manager, slice_index):
+        """加载人工标注数据到增强标注面板"""
+        try:
+            log_debug(f"[DEBUG] load_manual_annotation called for slice {slice_index}", "MANUAL")
+            log_debug(f"=== 开始加载人工标注数据 ===", "MANUAL")
+            
+            # 记录加载前的状态
+            log_debug(f"加载前状态 - 生长级别: {self.current_growth_level.get()}", "MANUAL")
+            log_debug(f"加载前状态 - 生长模式: {self.current_growth_pattern.get()}", "MANUAL")
+            log_debug(f"加载前状态 - 微生物类型: {self.current_microbe_type.get()}", "MANUAL")
+            
+            # 获取当前切片的标注数据
+            # 注意：HoleManager没有get_slice_annotation方法，这里应该从数据集中获取
+            slice_annotation = None
+            if hasattr(self, 'current_dataset') and self.current_dataset:
+                # 从数据集中查找对应的标注数据
+                for annotation in self.current_dataset.annotations:
+                    if (annotation.panoramic_id == panoramic_id and 
+                        annotation.hole_number == hole_number):
+                        slice_annotation = annotation
+                        break
+            log_debug(f"获取到的切片标注: {slice_annotation}", "MANUAL")
+            
+            if slice_annotation and hasattr(slice_annotation, 'enhanced_data') and slice_annotation.enhanced_data:
+                # 有增强标注数据，直接加载
+                enhanced_data = slice_annotation.enhanced_data
+                log_debug(f"加载切片 {slice_index} 的增强标注数据: {enhanced_data}", "MANUAL")
+                self.set_feature_combination(enhanced_data)
+            elif slice_annotation:
+                # 有基础标注数据，转换为增强标注格式
+                log_debug(f"转换基础标注数据为增强格式", "MANUAL")
+                
+                # 从基础标注数据推断生长级别
+                growth_level = "negative"  # 默认值
+                if hasattr(slice_annotation, 'has_bacteria') and slice_annotation.has_bacteria:
+                    if hasattr(slice_annotation, 'bacteria_type'):
+                        bacteria_type = slice_annotation.bacteria_type
+                        if bacteria_type in ['negative', 'weak_growth', 'positive']:
+                            growth_level = bacteria_type
+                        else:
+                            growth_level = 'positive'  # 默认为阳性
+                    else:
+                        growth_level = 'positive'  # 有细菌但无类型信息，默认为阳性
+                
+                log_debug(f"推断的生长级别: {growth_level}", "MANUAL")
+                
+                # 设置微生物类型（默认为细菌）
+                self.current_microbe_type.set("bacteria")
+                
+                # 设置生长级别
+                self.current_growth_level.set(growth_level)
+                
+                # 根据生长级别设置默认模式
+                default_pattern = FeatureCombination.get_distinguishable_default_pattern(growth_level)
+                self.current_growth_pattern.set(default_pattern)
+                log_debug(f"设置默认生长模式: {default_pattern}", "MANUAL")
+                
+                # 处理干扰因素
+                for var in self.interference_vars.values():
+                    var.set(False)
+                
+                if hasattr(slice_annotation, 'has_impurities') and slice_annotation.has_impurities:
+                    if hasattr(slice_annotation, 'impurities_type') and slice_annotation.impurities_type:
+                        impurities = slice_annotation.impurities_type.split(',')
+                        log_debug(f"处理干扰因素: {impurities}", "MANUAL")
+                        
+                        # 映射干扰因素名称到枚举
+                        impurity_mapping = {
+                            'pores': InterferenceType.PORES,
+                            'artifacts': InterferenceType.ARTIFACTS,
+                            'debris': InterferenceType.DEBRIS,
+                            'contamination': InterferenceType.CONTAMINATION,
+                            '气孔': InterferenceType.PORES,
+                            '气孔重叠': InterferenceType.ARTIFACTS,
+                            '杂质': InterferenceType.DEBRIS,
+                            '污染': InterferenceType.CONTAMINATION
+                        }
+                        
+                        for impurity in impurities:
+                            impurity = impurity.strip()
+                            if impurity in impurity_mapping:
+                                enum_factor = impurity_mapping[impurity]
+                                if enum_factor in self.interference_vars:
+                                    self.interference_vars[enum_factor].set(True)
+                                    log_debug(f"设置干扰因素: {impurity} -> {enum_factor}", "MANUAL")
+                
+                # 设置默认置信度
+                self.current_confidence.set(1.0)
+                
+            else:
+                # 无标注数据，使用默认值初始化
+                log_debug(f"切片 {slice_index} 无标注数据，使用默认值初始化", "MANUAL")
+                self.initialize_with_defaults("negative", "bacteria", True)
+            
+            # 更新界面选项
+            self.update_pattern_options()
+            self.update_interference_options()
+            
+            # 记录加载后的状态
+            log_debug(f"加载后状态 - 生长级别: {self.current_growth_level.get()}", "MANUAL")
+            log_debug(f"加载后状态 - 生长模式: {self.current_growth_pattern.get()}", "MANUAL")
+            log_debug(f"加载后状态 - 微生物类型: {self.current_microbe_type.get()}", "MANUAL")
+            
+            # 强制更新界面显示
+            if hasattr(self, 'main_frame'):
+                self.main_frame.update_idletasks()
+                log_debug("界面刷新完成", "MANUAL")
+            
+            log_debug("=== 人工标注数据加载完成 ===", "MANUAL")
+            
+        except Exception as e:
+            log_error(f"加载人工标注数据失败: {e}", "ERROR")
+            import traceback
+            log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
+            # 出错时使用默认值
+            self.initialize_with_defaults("negative", "bacteria", True)
+    
+    def load_model_suggestion(self, suggestion):
+         """加载模型建议数据到增强标注面板"""
+         try:
+             log_debug(f"[DEBUG] load_model_suggestion called", "MODEL")
+             log_debug(f"=== 开始加载模型建议数据 ===", "MODEL")
+             log_debug(f"完整建议数据: {suggestion}", "MODEL")
+             log_debug(f"建议数据类型: {type(suggestion)}", "MODEL")
+             
+             # 记录加载前的状态
+             log_debug(f"加载前状态 - 生长级别: {self.current_growth_level.get()}", "MODEL")
+             log_debug(f"加载前状态 - 生长模式: {self.current_growth_pattern.get()}", "MODEL")
+             log_debug(f"加载前状态 - 微生物类型: {self.current_microbe_type.get()}", "MODEL")
+             
+             # 设置微生物类型
+             if hasattr(suggestion, 'microbe_type'):
+                 microbe_type = suggestion.microbe_type
+                 log_debug(f"原始微生物类型数据: {microbe_type}, 类型: {type(microbe_type)}", "MODEL")
+                 if microbe_type in ['bacteria', 'fungi', 'virus', 'other']:
+                     self.current_microbe_type.set(microbe_type)
+                     log_debug(f"设置微生物类型: {microbe_type}", "MODEL")
+                 else:
+                     log_warning(f"未知的微生物类型: {microbe_type}，保持默认值", "MODEL")
+             else:
+                 log_debug("建议数据中无microbe_type字段", "MODEL")
+             
+             # 设置生长级别
+             if hasattr(suggestion, 'growth_level'):
+                 growth_level = suggestion.growth_level
+                 log_debug(f"原始生长级别数据: {growth_level}, 类型: {type(growth_level)}", "MODEL")
+                 
+                 # 处理可能的字符串或枚举类型
+                 if hasattr(growth_level, 'value'):
+                     growth_level = growth_level.value
+                 elif hasattr(growth_level, 'name'):
+                     growth_level = growth_level.name.lower()
+                 
+                 # 映射模型建议的生长级别到正确的值
+                 growth_level_mapping = {
+                     'low': 'negative',
+                     'medium': 'weak_growth', 
+                     'high': 'positive',
+                     'negative': 'negative',
+                     'weak_growth': 'weak_growth',
+                     'positive': 'positive',
+                     'weak': 'weak_growth',
+                     'strong': 'positive'
+                 }
+                 
+                 # 转换为小写进行匹配
+                 growth_level_str = str(growth_level).lower()
+                 log_debug(f"处理后的生长级别字符串: {growth_level_str}", "MODEL")
+                 
+                 if growth_level_str in growth_level_mapping:
+                     mapped_level = growth_level_mapping[growth_level_str]
+                     log_debug(f"映射后的生长级别: {mapped_level}", "MODEL")
+                     log_debug(f"设置前current_growth_level: {self.current_growth_level.get()}", "MODEL")
+                     
+                     self.current_growth_level.set(mapped_level)
+                     log_debug(f"设置后current_growth_level: {self.current_growth_level.get()}", "MODEL")
+                     
+                     # 立即更新界面选项以确保生长级别变化生效
+                     log_debug(f"调用update_pattern_options前...", "MODEL")
+                     self.update_pattern_options()
+                     log_debug(f"调用update_pattern_options后的生长级别: {self.current_growth_level.get()}", "MODEL")
+                     
+                     # 禁用强制触发界面刷新
+                     # self.main_frame.update()
+                     # log_debug("强制界面刷新完成", "MODEL")
+                 else:
+                     log_warning(f"未知的生长级别: {growth_level_str}，保持默认值", "MODEL")
+             else:
+                 log_debug("建议数据中无growth_level字段", "MODEL")
+             
+             # 设置生长模式
+             pattern_set = False
+             if hasattr(suggestion, 'growth_pattern'):
+                 growth_pattern = suggestion.growth_pattern
+                 log_debug(f"原始生长模式数据: {growth_pattern}, 类型: {type(growth_pattern)}", "MODEL")
+                 log_debug(f"设置前current_growth_pattern: {self.current_growth_pattern.get()}", "MODEL")
+                 
+                 if isinstance(growth_pattern, list) and growth_pattern:
+                     # 如果是列表，取第一个值
+                     pattern = growth_pattern[0]
+                     log_debug(f"从列表中取第一个值: {pattern}", "MODEL")
+                 else:
+                     pattern = growth_pattern
+                 
+                 log_debug(f"处理生长模式: {pattern}", "MODEL")
+                 
+                 # 映射模型建议的生长模式到正确的值
+                 pattern_mapping = {
+                     'scattered': 'scattered',
+                     'clustered': 'clustered', 
+                     'linear': 'irregular_areas',
+                     'circular': 'focal'
+                 }
+                 
+                 log_debug(f"可用的模式映射: {list(pattern_mapping.keys())}", "MODEL")
+                 
+                 if pattern in pattern_mapping:
+                     mapped_pattern = pattern_mapping[pattern]
+                     self.current_growth_pattern.set(mapped_pattern)
+                     log_debug(f"设置生长模式: {pattern} -> {mapped_pattern}", "MODEL")
+                     log_debug(f"设置后current_growth_pattern: {self.current_growth_pattern.get()}", "MODEL")
+                     pattern_set = True
+                 elif pattern in ['clean', 'small_dots', 'light_gray', 'irregular_areas', 'heavy_growth', 'focal', 'diffuse', 'default_positive', 'default_weak_growth']:
+                     # 如果已经是正确的值，直接设置
+                     self.current_growth_pattern.set(pattern)
+                     log_debug(f"直接设置生长模式: {pattern}", "MODEL")
+                     log_debug(f"设置后current_growth_pattern: {self.current_growth_pattern.get()}", "MODEL")
+                     pattern_set = True
+                 else:
+                     log_warning(f"未知的生长模式: {pattern}，将使用默认值", "MODEL")
+             else:
+                 log_debug("建议数据中无growth_pattern字段，将使用默认值", "MODEL")
+             
+             # 如果没有设置生长模式或设置失败，根据当前生长级别设置默认模式
+             if not pattern_set:
+                 current_level = self.current_growth_level.get()
+                 default_pattern = FeatureCombination.get_distinguishable_default_pattern(current_level)
+                 self.current_growth_pattern.set(default_pattern)
+                 log_debug(f"设置默认生长模式: {default_pattern} (基于生长级别: {current_level})", "MODEL")
+                 log_debug(f"设置默认值后current_growth_pattern: {self.current_growth_pattern.get()}", "MODEL")
+             
+             # 设置干扰因素
+             if hasattr(suggestion, 'interference_factors'):
+                 interference_factors = suggestion.interference_factors
+                 log_debug(f"原始干扰因素数据: {interference_factors}", "MODEL")
+                 log_debug(f"可用的干扰因素枚举: {list(self.interference_vars.keys())}", "MODEL")
+                 
+                 # 先清空所有干扰因素
+                 for var in self.interference_vars.values():
+                     var.set(False)
+                 log_debug("已清空所有干扰因素", "MODEL")
+                 
+                 # 设置模型建议的干扰因素
+                 if isinstance(interference_factors, list):
+                     log_debug(f"处理干扰因素列表，长度: {len(interference_factors)}", "MODEL")
+                     for factor in interference_factors:
+                         log_debug(f"处理干扰因素: {factor}, 类型: {type(factor)}", "MODEL")
+                         self._set_single_interference_factor(factor)
+                 elif isinstance(interference_factors, str) and interference_factors:
+                     log_debug(f"处理单个干扰因素字符串: {interference_factors}", "MODEL")
+                     self._set_single_interference_factor(interference_factors)
+                 else:
+                     log_debug(f"干扰因素数据类型不支持: {type(interference_factors)}", "MODEL")
+             else:
+                 log_debug("建议数据中无interference_factors字段", "MODEL")
+             
+             # 设置置信度
+             if hasattr(suggestion, 'confidence'):
+                 confidence = suggestion.confidence
+                 log_debug(f"原始置信度数据: {confidence}, 类型: {type(confidence)}", "MODEL")
+                 if isinstance(confidence, (int, float)) and 0 <= confidence <= 100:
+                     self.confidence_var.set(int(confidence))
+                     log_debug(f"设置置信度: {confidence}", "MODEL")
+                 else:
+                     log_warning(f"无效的置信度值: {confidence}，保持默认值", "MODEL")
+             else:
+                 log_debug("建议数据中无confidence字段", "MODEL")
+             
+             # 记录加载后的状态
+             log_debug(f"加载后状态 - 生长级别: {self.current_growth_level.get()}", "MODEL")
+             log_debug(f"加载后状态 - 生长模式: {self.current_growth_pattern.get()}", "MODEL")
+             log_debug(f"加载后状态 - 微生物类型: {self.current_microbe_type.get()}", "MODEL")
+             
+             # 禁用强制更新界面显示
+             log_debug("更新界面显示...", "MODEL")
+             log_debug(f"更新前界面状态 - 生长级别按钮: {self.current_growth_level.get()}", "MODEL")
+             log_debug(f"更新前界面状态 - 生长模式按钮: {self.current_growth_pattern.get()}", "MODEL")
+             
+             # 检查干扰因素状态
+             interference_status = {}
+             for factor, var in self.interference_vars.items():
+                 interference_status[factor.value if hasattr(factor, 'value') else str(factor)] = var.get()
+             log_debug(f"更新前干扰因素状态: {interference_status}", "MODEL")
+             
+             self.update_pattern_options()
+             self.update_interference_options()
+             
+             # 检查更新后的状态
+             log_debug(f"更新后界面状态 - 生长级别按钮: {self.current_growth_level.get()}", "MODEL")
+             log_debug(f"更新后界面状态 - 生长模式按钮: {self.current_growth_pattern.get()}", "MODEL")
+             
+             # 再次检查干扰因素状态
+             interference_status_after = {}
+             for factor, var in self.interference_vars.items():
+                 interference_status_after[factor.value if hasattr(factor, 'value') else str(factor)] = var.get()
+             log_debug(f"更新后干扰因素状态: {interference_status_after}", "MODEL")
+             
+             # 禁用触发界面刷新
+             # if hasattr(self, 'main_frame'):
+             #     self.main_frame.update_idletasks()
+             #     log_debug("界面刷新完成", "MODEL")
+             
+             log_debug("=== 模型建议数据加载完成 ===", "MODEL")
+             
+         except Exception as e:
+             log_error(f"加载模型建议数据失败: {e}", "ERROR")
+             import traceback
+             log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
+             # 出错时使用默认值
+             self.initialize_with_defaults("negative", "bacteria", True)
+                 
+    def _set_single_interference_factor(self, factor):
+        """设置单个干扰因素"""
+        try:
+            log_debug(f"尝试设置干扰因素: {factor}, 类型: {type(factor)}", "MODEL")
+            
+            # 方法1: 直接匹配枚举对象
+            if factor in self.interference_vars:
+                self.interference_vars[factor].set(True)
+                log_debug(f"直接匹配设置干扰因素: {factor}", "MODEL")
+                return True
+            
+            # 方法2: 处理字符串类型，通过枚举值匹配
+            if isinstance(factor, str):
+                # 创建字符串到枚举的映射
+                string_to_enum = {
+                    'pores': InterferenceType.PORES,
+                    'artifacts': InterferenceType.ARTIFACTS, 
+                    'debris': InterferenceType.DEBRIS,
+                    'contamination': InterferenceType.CONTAMINATION,
+                    # 添加中文映射
+                    '气孔': InterferenceType.PORES,
+                    '气孔重叠': InterferenceType.ARTIFACTS,
+                    '杂质': InterferenceType.DEBRIS,
+                    '污染': InterferenceType.CONTAMINATION
+                }
+                
+                log_debug(f"字符串映射表: {list(string_to_enum.keys())}", "MODEL")
+                
+                # 尝试直接映射
+                if factor in string_to_enum:
+                    enum_factor = string_to_enum[factor]
+                    if enum_factor in self.interference_vars:
+                        self.interference_vars[enum_factor].set(True)
+                        log_debug(f"通过字符串映射设置干扰因素: {factor} -> {enum_factor}", "MODEL")
+                        return True
+                
+                # 尝试通过枚举值匹配
+                for enum_key, var in self.interference_vars.items():
+                    if hasattr(enum_key, 'value') and enum_key.value == factor:
+                        var.set(True)
+                        log_debug(f"通过枚举值匹配设置干扰因素: {factor} -> {enum_key}", "MODEL")
+                        return True
+            
+            # 方法3: 处理枚举类型
+            elif hasattr(factor, 'value'):
+                factor_value = factor.value
+                for enum_key, var in self.interference_vars.items():
+                    if hasattr(enum_key, 'value') and enum_key.value == factor_value:
+                        var.set(True)
+                        log_debug(f"通过枚举对象设置干扰因素: {factor} -> {enum_key}", "MODEL")
+                        return True
+            
+            log_warning(f"未找到匹配的干扰因素: {factor}", "MODEL")
+            return False
+            
+        except Exception as e:
+            log_error(f"设置干扰因素失败: {factor}, 错误: {e}", "MODEL")
+            return False
