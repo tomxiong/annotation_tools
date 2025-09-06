@@ -792,22 +792,30 @@ class EnhancedAnnotationPanel:
         try:
             log_debug(f"[DEBUG] load_manual_annotation called for slice {slice_index}", "MANUAL")
             log_debug(f"=== 开始加载人工标注数据 ===", "MANUAL")
-            
+
             # 记录加载前的状态
             log_debug(f"加载前状态 - 生长级别: {self.current_growth_level.get()}", "MANUAL")
             log_debug(f"加载前状态 - 生长模式: {self.current_growth_pattern.get()}", "MANUAL")
             log_debug(f"加载前状态 - 微生物类型: {self.current_microbe_type.get()}", "MANUAL")
-            
+
             # 获取当前切片的标注数据
             # 注意：HoleManager没有get_slice_annotation方法，这里应该从数据集中获取
             slice_annotation = None
             if hasattr(self, 'current_dataset') and self.current_dataset:
-                # 从数据集中查找对应的标注数据
-                for annotation in self.current_dataset.annotations:
-                    if (annotation.panoramic_id == panoramic_id and 
-                        annotation.hole_number == hole_number):
-                        slice_annotation = annotation
-                        break
+                # 从slice_index获取panoramic_id和hole_number
+                if hasattr(self, 'slice_files') and self.slice_files and 0 <= slice_index < len(self.slice_files):
+                    current_slice = self.slice_files[slice_index]
+                    panoramic_id = current_slice.get('panoramic_id')
+                    hole_number = current_slice.get('hole_number')
+
+                    # 从数据集中查找对应的标注数据
+                    for annotation in self.current_dataset.annotations:
+                        if (annotation.panoramic_id == panoramic_id and
+                            annotation.hole_number == hole_number):
+                            slice_annotation = annotation
+                            break
+                else:
+                    log_debug("无法获取切片文件信息", "MANUAL")
             log_debug(f"获取到的切片标注: {slice_annotation}", "MANUAL")
             
             if slice_annotation and hasattr(slice_annotation, 'enhanced_data') and slice_annotation.enhanced_data:
@@ -1094,11 +1102,11 @@ class EnhancedAnnotationPanel:
                  interference_status_after[factor.value if hasattr(factor, 'value') else str(factor)] = var.get()
              log_debug(f"更新后干扰因素状态: {interference_status_after}", "MODEL")
              
-             # 禁用触发界面刷新
-             # if hasattr(self, 'main_frame'):
-             #     self.main_frame.update_idletasks()
-             #     log_debug("界面刷新完成", "MODEL")
-             
+             # 强制触发界面刷新，确保控件状态正确显示
+             if hasattr(self, 'main_frame'):
+                 self.main_frame.update_idletasks()
+                 log_debug("界面刷新完成", "MODEL")
+
              log_debug("=== 模型建议数据加载完成 ===", "MODEL")
              
          except Exception as e:

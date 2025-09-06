@@ -12,7 +12,6 @@ from enum import Enum
 class ViewMode(Enum):
     MANUAL = "人工"
     MODEL = "模型"
-    CFG = "CFG"
 
 
 class HoleConfigPanel:
@@ -50,11 +49,9 @@ class HoleConfigPanel:
         
         # 孔位间距
         self.create_spacing_section()
-        
-        # 孔位尺寸
+                
         # 孔位尺寸
         self.create_size_section()
-        
         # 起始孔位设置
         self.create_start_hole_section()
         
@@ -79,13 +76,9 @@ class HoleConfigPanel:
                                           value=ViewMode.MANUAL.value, command=self._on_view_mode_changed)
         self.manual_radio.pack(side=tk.LEFT, padx=5)
         
-        self.model_radio = ttk.Radiobutton(mode_frame, text="模型", variable=self.view_mode_var, 
+        self.model_radio = ttk.Radiobutton(mode_frame, text="模型", variable=self.view_mode_var,
                                          value=ViewMode.MODEL.value, command=self._on_view_mode_changed)
         self.model_radio.pack(side=tk.LEFT, padx=5)
-        
-        self.cfg_radio = ttk.Radiobutton(mode_frame, text="CFG", variable=self.view_mode_var, 
-                                       value=ViewMode.CFG.value, command=self._on_view_mode_changed)
-        self.cfg_radio.pack(side=tk.LEFT, padx=5)
     
     def create_coordinate_section(self):
         """创建坐标配置区域"""
