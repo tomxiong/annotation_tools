@@ -102,6 +102,7 @@ class ModelSuggestionImportService:
         if not file_path.exists():
             raise FileNotFoundError(f"模型结果文件不存在: {file_path}")
             
+        # 保留关键的用户提示信息
         self.log_info(f"开始加载模型建议文件: {file_path}", "ModelImport")
         
         try:
@@ -193,6 +194,7 @@ class ModelSuggestionImportService:
                 
         # 记录统计信息
         total_count = len(annotations)
+        # 保留关键的用户提示信息
         self.log_info(f"模型建议导入完成: 总计{total_count}条，成功{processed_count}条，重复{duplicate_count}条，无效{invalid_count}条", "ModelImport")
         
         if warnings:
@@ -337,7 +339,9 @@ class ModelSuggestionImportService:
         """
         # 这个方法将在HoleManager扩展后实现具体逻辑
         # 目前只返回建议数量
+        # 保留关键的用户提示信息
         count = suggestions_map.count()
+        # 保留关键的用户提示信息
         self.log_info(f"准备将{count}条模型建议合并到会话中", "ModelImport")
         return count
         

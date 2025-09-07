@@ -6,6 +6,20 @@
 from typing import Tuple, List, Optional, Dict, Any
 from dataclasses import dataclass
 
+# 日志导入
+try:
+    from src.utils.logger import log_debug, log_info, log_warning, log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_warning(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
 # 导入模型建议相关类
 try:
     from src.services.model_suggestion_import_service import SuggestionsMap, Suggestion
@@ -387,39 +401,39 @@ class HoleManager:
     
     def set_suggestions_map(self, suggestions_map: SuggestionsMap, panoramic_id: str):
         """设置模型建议映射"""
-        print(f"[DEBUG] HoleManager.set_suggestions_map called with panoramic_id: {panoramic_id}")
-        print(f"[DEBUG] SuggestionsMap count: {suggestions_map.count() if suggestions_map else 0}")
-        
+        log_debug(f"HoleManager.set_suggestions_map called with panoramic_id: {panoramic_id}", "HOLE_MANAGER")
+        log_debug(f"SuggestionsMap count: {suggestions_map.count() if suggestions_map else 0}", "HOLE_MANAGER")
+
         self._suggestions_map = suggestions_map
         self._current_panoramic_id = panoramic_id
         self._adopted_suggestions.clear()
-        
+
         # 调试输出：检查前几个孔位的建议
         if suggestions_map and panoramic_id:
-            print(f"[DEBUG] Checking suggestions for panoramic_id: {panoramic_id}")
+            log_debug(f"Checking suggestions for panoramic_id: {panoramic_id}", "HOLE_MANAGER")
             for hole_num in range(1, 11):  # 检查前10个孔位
                 has_suggestion = suggestions_map.has_suggestion(panoramic_id, hole_num)
                 if has_suggestion:
                     suggestion = suggestions_map.get_suggestion(panoramic_id, hole_num)
-                    print(f"[DEBUG] Hole {hole_num}: has suggestion, growth_level={suggestion.growth_level if suggestion else 'None'}")
+                    log_debug(f"Hole {hole_num}: has suggestion, growth_level={suggestion.growth_level if suggestion else 'None'}", "HOLE_MANAGER")
                 else:
-                    print(f"[DEBUG] Hole {hole_num}: no suggestion")
+                    log_debug(f"Hole {hole_num}: no suggestion", "HOLE_MANAGER")
     
     def get_hole_suggestion(self, hole_number: int) -> Optional['Suggestion']:
         """获取指定孔位的模型建议"""
-        print(f"[DEBUG] get_hole_suggestion called for hole {hole_number}")
-        print(f"[DEBUG] _suggestions_map is None: {self._suggestions_map is None}")
-        print(f"[DEBUG] _current_panoramic_id: {self._current_panoramic_id}")
-        
+        log_debug(f"get_hole_suggestion called for hole {hole_number}", "HOLE_MANAGER")
+        log_debug(f"_suggestions_map is None: {self._suggestions_map is None}", "HOLE_MANAGER")
+        log_debug(f"_current_panoramic_id: {self._current_panoramic_id}", "HOLE_MANAGER")
+
         if not self._suggestions_map or not self._current_panoramic_id:
-            print(f"[DEBUG] No suggestions_map or panoramic_id, returning None")
+            log_debug(f"No suggestions_map or panoramic_id, returning None", "HOLE_MANAGER")
             return None
-            
+
         suggestion = self._suggestions_map.get_suggestion(self._current_panoramic_id, hole_number)
-        print(f"[DEBUG] Found suggestion for hole {hole_number}: {suggestion is not None}")
+        log_debug(f"Found suggestion for hole {hole_number}: {suggestion is not None}", "HOLE_MANAGER")
         if suggestion:
-            print(f"[DEBUG] Suggestion details: growth_level={suggestion.growth_level}, confidence={suggestion.model_confidence}, growth_pattern={suggestion.growth_pattern}, interference_factors={suggestion.interference_factors}")
-        
+            log_debug(f"Suggestion details: growth_level={suggestion.growth_level}, confidence={suggestion.model_confidence}, growth_pattern={suggestion.growth_pattern}, interference_factors={suggestion.interference_factors}", "HOLE_MANAGER")
+
         return suggestion
     
     def has_hole_suggestion(self, hole_number: int) -> bool:
