@@ -330,6 +330,7 @@ class ConfigFileService:
                     annotation = annotations[hole_num]
                     f.write(f"{hole_num}:{annotation}\n")
             
+            # 保留关键的用户提示信息
             log_info(f"配置文件保存成功: {config_file_path}", "CONFIG")
             return True
             

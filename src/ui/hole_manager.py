@@ -6,6 +6,40 @@
 from typing import Tuple, List, Optional, Dict, Any
 from dataclasses import dataclass
 
+# 日志导入
+try:
+    from src.utils.logger import log_debug, log_info, log_warning, log_error
+except ImportError:
+    # 如果日志模块不可用，使用print作为后备
+    def log_debug(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_info(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_warning(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+    def log_error(msg, category=""):
+        print(f"[{category}] {msg}" if category else msg)
+
+# 导入模型建议相关类
+try:
+    from src.services.model_suggestion_import_service import SuggestionsMap, Suggestion
+except ImportError:
+    # 如果导入失败，定义占位符类
+    class SuggestionsMap:
+        def __init__(self):
+            pass
+        def get_suggestion(self, panoramic_id: str, hole_number: int):
+            return None
+        def has_suggestion(self, panoramic_id: str, hole_number: int) -> bool:
+            return False
+    
+    class Suggestion:
+        def __init__(self):
+            self.growth_level = None
+            self.growth_pattern = []
+            self.interference_factors = []
+            self.model_confidence = None
+
 
 @dataclass
 class HolePosition:
@@ -47,6 +81,11 @@ class HoleManager:
         
         # 起始孔位设置 - 默认从25号孔开始标注
         self.start_hole_number = 25
+        
+        # 模型建议相关
+        self._suggestions_map: Optional[SuggestionsMap] = None
+        self._current_panoramic_id: Optional[str] = None
+        self._adopted_suggestions: Dict[int, bool] = {}  # hole_number -> is_adopted
         
     def update_positioning_params(self, first_hole_x=None, first_hole_y=None, 
                                 horizontal_spacing=None, vertical_spacing=None, 
@@ -359,3 +398,85 @@ class HoleManager:
         col = col_num - 1
         
         return self.position_to_number(row, col)
+    
+    def set_suggestions_map(self, suggestions_map: SuggestionsMap, panoramic_id: str):
+        """设置模型建议映射"""
+        log_debug(f"HoleManager.set_suggestions_map called with panoramic_id: {panoramic_id}", "HOLE_MANAGER")
+        log_debug(f"SuggestionsMap count: {suggestions_map.count() if suggestions_map else 0}", "HOLE_MANAGER")
+
+        self._suggestions_map = suggestions_map
+        self._current_panoramic_id = panoramic_id
+        self._adopted_suggestions.clear()
+
+        # 调试输出：检查前几个孔位的建议
+        if suggestions_map and panoramic_id:
+            log_debug(f"Checking suggestions for panoramic_id: {panoramic_id}", "HOLE_MANAGER")
+            for hole_num in range(1, 11):  # 检查前10个孔位
+                has_suggestion = suggestions_map.has_suggestion(panoramic_id, hole_num)
+                if has_suggestion:
+                    suggestion = suggestions_map.get_suggestion(panoramic_id, hole_num)
+                    log_debug(f"Hole {hole_num}: has suggestion, growth_level={suggestion.growth_level if suggestion else 'None'}", "HOLE_MANAGER")
+                else:
+                    log_debug(f"Hole {hole_num}: no suggestion", "HOLE_MANAGER")
+    
+    def get_hole_suggestion(self, hole_number: int) -> Optional['Suggestion']:
+        """获取指定孔位的模型建议"""
+        log_debug(f"get_hole_suggestion called for hole {hole_number}", "HOLE_MANAGER")
+        log_debug(f"_suggestions_map is None: {self._suggestions_map is None}", "HOLE_MANAGER")
+        log_debug(f"_current_panoramic_id: {self._current_panoramic_id}", "HOLE_MANAGER")
+
+        if not self._suggestions_map or not self._current_panoramic_id:
+            log_debug(f"No suggestions_map or panoramic_id, returning None", "HOLE_MANAGER")
+            return None
+
+        suggestion = self._suggestions_map.get_suggestion(self._current_panoramic_id, hole_number)
+        log_debug(f"Found suggestion for hole {hole_number}: {suggestion is not None}", "HOLE_MANAGER")
+        if suggestion:
+            log_debug(f"Suggestion details: growth_level={suggestion.growth_level}, confidence={suggestion.model_confidence}, growth_pattern={suggestion.growth_pattern}, interference_factors={suggestion.interference_factors}", "HOLE_MANAGER")
+
+        return suggestion
+    
+    def has_hole_suggestion(self, hole_number: int) -> bool:
+        """检查指定孔位是否有模型建议"""
+        if not self._suggestions_map or not self._current_panoramic_id:
+            return False
+        return self._suggestions_map.has_suggestion(self._current_panoramic_id, hole_number)
+    
+    def adopt_suggestion(self, hole_number: int):
+        """采纳指定孔位的模型建议"""
+        self._adopted_suggestions[hole_number] = True
+    
+    def reject_suggestion(self, hole_number: int):
+        """拒绝指定孔位的模型建议"""
+        self._adopted_suggestions[hole_number] = False
+    
+    def is_suggestion_adopted(self, hole_number: int) -> Optional[bool]:
+        """检查指定孔位的建议是否已被采纳
+        
+        Returns:
+            True: 已采纳
+            False: 已拒绝
+            None: 未处理
+        """
+        return self._adopted_suggestions.get(hole_number)
+    
+    def get_suggestions_summary(self) -> Dict[str, int]:
+        """获取建议处理摘要"""
+        if not self._suggestions_map or not self._current_panoramic_id:
+            return {'total': 0, 'adopted': 0, 'rejected': 0, 'pending': 0}
+        
+        total_suggestions = 0
+        for hole_num in range(1, self.total_holes + 1):
+            if self.has_hole_suggestion(hole_num):
+                total_suggestions += 1
+        
+        adopted = sum(1 for adopted in self._adopted_suggestions.values() if adopted)
+        rejected = sum(1 for adopted in self._adopted_suggestions.values() if not adopted)
+        pending = total_suggestions - adopted - rejected
+        
+        return {
+            'total': total_suggestions,
+            'adopted': adopted,
+            'rejected': rejected,
+            'pending': pending
+        }
