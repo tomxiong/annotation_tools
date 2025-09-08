@@ -1146,7 +1146,19 @@ class PanoramicAnnotationGUI:
             
             self.log_debug(f"load_current_slice: 旧全景图ID {old_panoramic_id}, 新全景图ID {new_panoramic_id}")
             self.log_debug(f"load_current_slice: 全景图是否改变 {panoramic_changed}")
-            
+
+            # 如果全景图改变，重置标注状态以避免从上一个全景图复制设置
+            if panoramic_changed:
+                self.current_growth_level.set("negative")
+                self.current_microbe_type.set("bacteria")
+                # 重置干扰因素
+                for factor in self.interference_factors:
+                    self.interference_factors[factor].set(False)
+                # 重置增强标注面板
+                if self.enhanced_annotation_panel:
+                    self.enhanced_annotation_panel.reset_annotation()
+                self.log_debug("全景图改变，重置标注状态", "LOAD")
+
             # 更新当前信息
             self.current_panoramic_id = current_file['panoramic_id']
             self.current_hole_number = current_file['hole_number']
@@ -2175,8 +2187,14 @@ class PanoramicAnnotationGUI:
 
         if config_growth_level:
             log_debug(f"下一个孔位CFG配置生长级别: {config_growth_level}", "COPY")
-            if config_growth_level != current_settings['growth_level']:
-                log_debug(f"CFG生长级别不同：当前={current_settings['growth_level']}, CFG={config_growth_level}，不复制设置", "COPY")
+
+            # 规范化当前生长级别（处理枚举和字符串）
+            current_growth_level = current_settings['growth_level']
+            if hasattr(current_growth_level, 'value'):
+                current_growth_level = current_growth_level.value
+
+            if config_growth_level != current_growth_level:
+                log_debug(f"CFG生长级别不同：当前={current_growth_level}, CFG={config_growth_level}，不复制设置", "COPY")
                 return False
             else:
                 log_debug(f"CFG生长级别相同：{config_growth_level}，允许复制设置", "COPY")
@@ -2187,17 +2205,18 @@ class PanoramicAnnotationGUI:
     
     def get_config_growth_level(self, hole_number):
         """获取配置文件中指定孔位的生长级别"""
-        if not hasattr(self, 'config_data') or not self.config_data:
+        # 使用正确的配置数据获取方法
+        config_data = self.get_current_panoramic_config()
+        if not config_data:
             return None
-        
+
         # 查找配置文件中该孔位的生长级别设置
-        for config_item in self.config_data:
-            if config_item.get('hole_number') == hole_number:
-                growth_level = config_item.get('growth_level')
-                if growth_level:
-                    log_debug(f"孔位{hole_number}配置生长级别: {growth_level}", "COPY")
-                    return growth_level
-        
+        if hole_number in config_data:
+            growth_level = config_data[hole_number]
+            if growth_level:
+                log_debug(f"孔位{hole_number}配置生长级别: {growth_level}", "COPY")
+                return growth_level
+
         return None
     
     def save_current_annotation(self):
