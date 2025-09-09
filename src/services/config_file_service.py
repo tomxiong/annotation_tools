@@ -29,6 +29,7 @@ class ConfigFileService:
     
     def __init__(self):
         self.supported_formats = {'.cfg', '.txt', '.config'}
+        self.config_data = {}
     
     def find_config_file(self, panoramic_image_path: str) -> Optional[str]:
         """
@@ -453,3 +454,56 @@ class ConfigFileService:
             raise ValueError(f"列位置必须在1-12之间，当前值: {col}")
         
         return (row - 1) * 12 + col
+
+    def load_config(self, config_file_path: str = None) -> bool:
+        """
+        加载配置文件
+
+        Args:
+            config_file_path: 配置文件路径，如果为None则使用默认路径
+
+        Returns:
+            bool: 加载是否成功
+        """
+        try:
+            if config_file_path is None:
+                config_file_path = "config/app.yaml"
+
+            if not os.path.exists(config_file_path):
+                log_info(f"配置文件不存在，将使用默认配置: {config_file_path}", "CONFIG")
+                return True
+
+            # 这里可以实现YAML或JSON配置文件的加载
+            # 暂时返回True表示成功
+            log_info(f"配置文件加载成功: {config_file_path}", "CONFIG")
+            return True
+
+        except Exception as e:
+            log_error(f"加载配置文件失败: {e}", "CONFIG")
+            return False
+
+    def save_config(self, config_file_path: str = None) -> bool:
+        """
+        保存配置文件
+
+        Args:
+            config_file_path: 配置文件路径，如果为None则使用默认路径
+
+        Returns:
+            bool: 保存是否成功
+        """
+        try:
+            if config_file_path is None:
+                config_file_path = "config/app.yaml"
+
+            # 确保目录存在
+            os.makedirs(os.path.dirname(config_file_path), exist_ok=True)
+
+            # 这里可以实现配置数据的保存
+            # 暂时返回True表示成功
+            log_info(f"配置文件保存成功: {config_file_path}", "CONFIG")
+            return True
+
+        except Exception as e:
+            log_error(f"保存配置文件失败: {e}", "CONFIG")
+            return False

@@ -12,13 +12,13 @@ from typing import Optional
 # 添加src目录到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.config import Config
-from core.logger import Logger
-from core.exceptions import ValidationError, FileProcessingError
-from models.dataset import Dataset
-from models.batch_job import BatchJob, JobStatus
-from services.image_processor import ImageProcessor
-from services.annotation_engine import AnnotationEngine, ModelType
+from src.core.config import Config
+from src.core.logger import Logger
+from src.core.exceptions import ValidationError, FileProcessingError
+from src.models.dataset import Dataset
+from src.models.batch_job import BatchJob, JobStatus
+from src.services.image_processor import ImageProcessor
+from src.services.annotation_engine import AnnotationEngine, ModelType
 
 
 class BatchAnnotationCLI:

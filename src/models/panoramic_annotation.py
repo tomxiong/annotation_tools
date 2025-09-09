@@ -11,7 +11,7 @@ from pathlib import Path
 
 # 日志导入
 try:
-    from src.utils.logger import log_debug
+    from utils.logger import log_debug
 except ImportError:
     # 如果日志模块不可用，使用print作为后备
     def log_debug(msg, category=""):

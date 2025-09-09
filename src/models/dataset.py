@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from models.annotation import Annotation
-from core.exceptions import ValidationError
+from .annotation import Annotation
+from src.core.exceptions import ValidationError
 
 
 @dataclass

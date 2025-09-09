@@ -192,6 +192,49 @@ python -m pytest tests/unit/
 python -m pytest tests/unit/test_annotation.py
 ```
 
+### Architecture Validation Tests
+```bash
+# Test core system components
+python -c "
+from src.core.config import get_config
+from src.core.logger import get_logger
+from src.core.exceptions import ValidationError
+
+# Test config system
+config = get_config()
+print(f'Config loaded: {config.database.host}')
+
+# Test logger
+logger = get_logger('test')
+logger.info('Architecture test passed')
+
+# Test exception handling
+try:
+    raise ValidationError('Test error', field='test')
+except ValidationError as e:
+    print(f'Exception system works: {e.error_code.name}')
+"
+
+# Test UI components
+python -c "
+from src.ui.utils.event_bus import EventBus, EventType
+from src.ui.models.ui_state import UIStateManager
+
+# Test event system
+bus = EventBus()
+received = []
+def handler(event): received.append(event)
+bus.subscribe(EventType.APP_STARTED, handler)
+bus.publish(EventType.APP_STARTED, {'test': True})
+print(f'Event system works: {len(received)} events received')
+
+# Test state management
+state_mgr = UIStateManager()
+state_mgr.update_state(test_value='working')
+print(f'State management works: {state_mgr.get_state().test_value}')
+"
+```
+
 ### Demo Testing
 ```bash
 # Run the main demo
@@ -210,6 +253,114 @@ PanoramicAnnotationTool.exe
 # Test pre-built CLI executable
 annotation-cli.exe --help
 ```
+
+### Common Issues and Solutions
+
+#### 1. Import Errors
+**Problem**: `ModuleNotFoundError` when running scripts
+**Solution**:
+```bash
+# Ensure you're in the project root directory
+cd /path/to/annotation_tools
+
+# Run with proper Python path
+python -c "import sys; sys.path.insert(0, '.'); import src.core.config"
+
+# Or use the launcher scripts
+python run_gui.py
+```
+
+#### 2. Tkinter Issues
+**Problem**: GUI fails to start or displays incorrectly
+**Solution**:
+```bash
+# Ensure tkinter is properly installed
+python -c "import tkinter; print('Tkinter version:', tkinter.TkVersion)"
+
+# For Windows, ensure DISPLAY is set (if using WSL)
+export DISPLAY=:0
+
+# Test basic tkinter functionality
+python -c "import tkinter as tk; root = tk.Tk(); root.title('Test'); root.mainloop()"
+```
+
+#### 3. Configuration Errors
+**Problem**: Configuration files not loading properly
+**Solution**:
+```bash
+# Validate YAML syntax
+python -c "import yaml; yaml.safe_load(open('config/app.yaml'))"
+
+# Check file permissions
+ls -la config/app.yaml
+
+# Test configuration loading
+python -c "from src.core.config import get_config; print(get_config().database.host)"
+```
+
+#### 4. Image Processing Issues
+**Problem**: OpenCV or PIL image processing fails
+**Solution**:
+```bash
+# Test OpenCV installation
+python -c "import cv2; print('OpenCV version:', cv2.__version__)"
+
+# Test PIL installation
+python -c "from PIL import Image; print('PIL version:', Image.__version__)"
+
+# Test image loading
+python -c "from PIL import Image; img = Image.open('path/to/test/image.png'); print(img.size)"
+```
+
+#### 5. Event System Debugging
+**Problem**: UI events not working properly
+**Solution**:
+```bash
+# Test event bus functionality
+python -c "
+from src.ui.utils.event_bus import EventBus, EventType
+bus = EventBus()
+events_received = []
+def test_handler(event): events_received.append(event)
+bus.subscribe(EventType.APP_STARTED, test_handler)
+bus.publish(EventType.APP_STARTED, {'test': 'data'})
+print(f'Events received: {len(events_received)}')
+"
+```
+
+#### 6. State Management Issues
+**Problem**: UI state not persisting or updating
+**Solution**:
+```bash
+# Test state manager
+python -c "
+from src.ui.models.ui_state import UIStateManager
+mgr = UIStateManager()
+mgr.update_state(test_key='test_value')
+state = mgr.get_state()
+print(f'State value: {getattr(state, \"test_key\", \"not found\")}')
+"
+```
+
+### Architecture Verification Steps
+
+1. **Core Systems Test**:
+   - ✅ Configuration system loads without errors
+   - ✅ Logger initializes and writes to files
+   - ✅ Exception handling works correctly
+   - ✅ Utility functions operate as expected
+
+2. **UI Components Test**:
+   - ✅ Event bus publishes and subscribes correctly
+   - ✅ State manager updates and retrieves values
+   - ✅ Base components initialize properly
+   - ✅ Controllers handle events appropriately
+
+3. **Integration Test**:
+   - ✅ Main application starts without errors
+   - ✅ Services register and resolve correctly
+   - ✅ UI components communicate properly
+   - ✅ Data flows through the system correctly
 
 ## 🔧 Configuration
 

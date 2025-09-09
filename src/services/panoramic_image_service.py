@@ -20,7 +20,7 @@ except ImportError:
     def log_error(msg, category=""):
         print(f"[{category}] {msg}" if category else msg)
 
-from ui.hole_manager import HoleManager
+from src.ui.hole_manager import HoleManager
 
 
 class PanoramicImageService:

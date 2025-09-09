@@ -10,11 +10,11 @@ from pathlib import Path
 # 添加src目录到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from core.config import Config
-from core.logger import Logger
-from models.dataset import Dataset
-from models.annotation import Annotation
-from services.image_processor import ImageProcessor
+from src.core.config import Config
+from src.core.logger import Logger
+from src.models.dataset import Dataset
+from src.models.annotation import Annotation
+from src.services.image_processor import ImageProcessor
 
 
 def create_sample_dataset():

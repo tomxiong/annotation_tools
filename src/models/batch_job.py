@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from .annotation import Annotation
 from .dataset import Dataset
-from core.exceptions import ValidationError
+from src.core.exceptions import ValidationError
 
 
 class JobStatus(Enum):

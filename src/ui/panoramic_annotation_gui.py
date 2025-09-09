@@ -34,6 +34,16 @@ except ImportError:
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
+    # 控制台处理器 - 完全禁用控制台输出，将所有日志重定向到文件
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.CRITICAL + 1)  # 设置为高于CRITICAL的级别，禁用所有控制台输出
+    console_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    console_handler.setFormatter(console_formatter)
+
+    # 获取根日志器并添加控制台处理器（但不输出任何内容）
+    root_logger = logging.getLogger()
+    root_logger.addHandler(console_handler)
+
     def log_debug(msg, category=""):
         logging.debug(f"[{category}] {msg}" if category else msg)
     def log_info(msg, category=""):
@@ -58,15 +68,15 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 # 直接导入模块
-from ui.hole_manager import HoleManager
-from ui.hole_config_panel import HoleConfigPanel
-from ui.enhanced_annotation_panel import EnhancedAnnotationPanel
-from services.panoramic_image_service import PanoramicImageService
-from services.config_file_service import ConfigFileService
-from models.panoramic_annotation import PanoramicAnnotation, PanoramicDataset
-from models.enhanced_annotation import EnhancedPanoramicAnnotation, FeatureCombination
-from models.enhanced_annotation import EnhancedPanoramicAnnotation
-from ui.batch_import_dialog import show_batch_import_dialog
+from src.ui.hole_manager import HoleManager
+from src.ui.hole_config_panel import HoleConfigPanel
+from src.ui.enhanced_annotation_panel import EnhancedAnnotationPanel
+from src.services.panoramic_image_service import PanoramicImageService
+from src.services.config_file_service import ConfigFileService
+from src.models.panoramic_annotation import PanoramicAnnotation, PanoramicDataset
+from src.models.enhanced_annotation import EnhancedPanoramicAnnotation, FeatureCombination
+from src.models.enhanced_annotation import EnhancedPanoramicAnnotation
+from src.ui.batch_import_dialog import show_batch_import_dialog
 
 # 模型建议导入服务
 try:
@@ -2579,18 +2589,42 @@ class PanoramicAnnotationGUI:
                 try:
                     # 获取详细的标注信息
                     feature_combination = self.enhanced_annotation_panel.get_current_feature_combination()
-                    interference_factors_str = ""
-                    if feature_combination.interference_factors:
-                        interference_factors_str = f"，干扰因素: {', '.join(sorted(feature_combination.interference_factors))}"
 
-                    growth_pattern_str = ""
-                    if feature_combination.growth_pattern:
-                        growth_pattern_str = f"，生长模式: {feature_combination.growth_pattern}"
+                    # 构建详细信息字符串
+                    details_parts = []
+
+                    # 生长级别
+                    if hasattr(feature_combination, 'growth_level') and feature_combination.growth_level:
+                        details_parts.append(feature_combination.growth_level)
+
+                    # 生长模式
+                    if hasattr(feature_combination, 'growth_pattern') and feature_combination.growth_pattern:
+                        details_parts.append(f"生长模式: {feature_combination.growth_pattern}")
+
+                    # 干扰因素
+                    if hasattr(feature_combination, 'interference_factors') and feature_combination.interference_factors:
+                        interference_names = []
+                        for factor in feature_combination.interference_factors:
+                            if hasattr(factor, 'value'):
+                                interference_names.append(factor.value)
+                            else:
+                                interference_names.append(str(factor))
+                        if interference_names:
+                            details_parts.append(f"干扰因素: {', '.join(sorted(interference_names))}")
+
+                    # 置信度
+                    if hasattr(feature_combination, 'confidence'):
+                        details_parts.append(f"置信度: {feature_combination.confidence:.2f}")
+
+                    # 组合详细信息
+                    detail_str = " - " + "，".join(details_parts) if details_parts else ""
 
                     # 保留关键的用户提示信息
-                    log_info(f"保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number} - {feature_combination.growth_level}{growth_pattern_str}{interference_factors_str}，置信度: {feature_combination.confidence:.2f}", "SAVE")
+                    log_info(f"保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}{detail_str}", "SAVE")
+
                 except Exception as e:
-                    # 如果获取详细信息失败，使用简化版本
+                    # 如果获取详细信息失败，记录错误并使用简化版本
+                    log_warning(f"获取标注详细信息失败: {e}，使用简化日志格式", "SAVE")
                     log_info(f"保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}", "SAVE")
             else:
                 # 自动保存和导航保存使用DEBUG级别

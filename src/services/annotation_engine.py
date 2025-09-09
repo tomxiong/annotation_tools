@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import numpy as np
 
-from models.annotation import Annotation
-from models.batch_job import BatchJob, JobStatus
-from core.config import Config
-from core.logger import Logger
-from core.exceptions import ValidationError
-from services.image_processor import ImageProcessor
+from src.models.annotation import Annotation
+from src.models.batch_job import BatchJob, JobStatus
+from src.core.config import Config
+from src.core.logger import get_logger
+from src.core.exceptions import ValidationError
+from .image_processor import ImageProcessor
 
 
 class ModelType(Enum):
@@ -29,16 +29,16 @@ class AnnotationEngine:
     Supports multiple model types and batch processing with progress tracking.
     """
     
-    def __init__(self, config: Config, logger: Logger):
+    def __init__(self, config: Config, logger_name: str = None):
         """
         Initialize AnnotationEngine.
-        
+
         Args:
             config: Configuration object
-            logger: Logger instance
+            logger_name: Logger name (optional)
         """
         self.config = config
-        self.logger = logger
+        self.logger = get_logger(logger_name or __name__)
         self.image_processor = ImageProcessor()
         self.models: Dict[str, Any] = {}
         self.current_job: Optional[BatchJob] = None

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from core.exceptions import ValidationError
+from src.core.exceptions import ValidationError
 
 
 @dataclass

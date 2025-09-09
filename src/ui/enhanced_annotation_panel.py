@@ -397,25 +397,69 @@ class EnhancedAnnotationPanel:
     def get_current_feature_combination(self):
         """获取当前特征组合"""
         try:
-            # Only log when there's a significant change or error
+            # 详细的状态检查和错误处理
+            log_debug("开始获取当前特征组合", "FEATURE_COMBINATION")
+
+            # 检查Tkinter变量是否存在和有效性
+            if not hasattr(self, 'current_growth_level') or self.current_growth_level is None:
+                raise ValueError("current_growth_level 变量不存在")
+            if not hasattr(self, 'current_growth_pattern') or self.current_growth_pattern is None:
+                raise ValueError("current_growth_pattern 变量不存在")
+            if not hasattr(self, 'current_confidence') or self.current_confidence is None:
+                raise ValueError("current_confidence 变量不存在")
+            if not hasattr(self, 'interference_vars') or self.interference_vars is None:
+                raise ValueError("interference_vars 字典不存在")
+
+            # 获取生长级别
+            try:
+                growth_level = self.current_growth_level.get()
+                log_debug(f"生长级别: {growth_level}", "FEATURE_COMBINATION")
+            except Exception as e:
+                raise ValueError(f"获取生长级别失败: {e}")
+
+            # 获取生长模式
+            try:
+                growth_pattern = self.current_growth_pattern.get()
+                log_debug(f"生长模式: {growth_pattern}", "FEATURE_COMBINATION")
+            except Exception as e:
+                raise ValueError(f"获取生长模式失败: {e}")
+
+            # 获取置信度
+            try:
+                confidence = self.current_confidence.get()
+                log_debug(f"置信度: {confidence}", "FEATURE_COMBINATION")
+            except Exception as e:
+                raise ValueError(f"获取置信度失败: {e}")
+
+            # 获取干扰因素
             interference_factors = set()
-            for factor, var in self.interference_vars.items():
-                if var.get():
-                    interference_factors.add(factor)
-            
-            growth_level = self.current_growth_level.get()
-            growth_pattern = self.current_growth_pattern.get()
-            confidence = self.current_confidence.get()
-            
-            # Create combination silently for normal operations
-            combination = FeatureCombination(
-                growth_level=growth_level,
-                growth_pattern=growth_pattern,
-                interference_factors=interference_factors,
-                confidence=confidence
-            )
-            
-            # Only log if this is a new or changed combination
+            try:
+                for factor, var in self.interference_vars.items():
+                    if var is None:
+                        log_warning(f"干扰因素变量为None: {factor}", "FEATURE_COMBINATION")
+                        continue
+                    try:
+                        if var.get():
+                            interference_factors.add(factor)
+                    except Exception as e:
+                        log_warning(f"获取干扰因素状态失败 {factor}: {e}", "FEATURE_COMBINATION")
+                        continue
+                log_debug(f"干扰因素数量: {len(interference_factors)}", "FEATURE_COMBINATION")
+            except Exception as e:
+                raise ValueError(f"处理干扰因素失败: {e}")
+
+            # 创建特征组合对象
+            try:
+                combination = FeatureCombination(
+                    growth_level=growth_level,
+                    growth_pattern=growth_pattern,
+                    interference_factors=interference_factors,
+                    confidence=confidence
+                )
+                log_debug("FeatureCombination 对象创建成功", "FEATURE_COMBINATION")
+            except Exception as e:
+                raise ValueError(f"创建FeatureCombination失败: {e}")
+
             # 转换枚举对象为字符串用于状态比较和日志记录
             interference_factor_strs = []
             for factor in interference_factors:
@@ -423,17 +467,21 @@ class EnhancedAnnotationPanel:
                     interference_factor_strs.append(factor.value)
                 else:
                     interference_factor_strs.append(str(factor))
-            
+
+            # 记录状态变化（仅在有变化时）
             current_state = (growth_level, growth_pattern, tuple(sorted(interference_factor_strs)), confidence)
             if not hasattr(self, '_last_combination_state') or self._last_combination_state != current_state:
                 log_debug(f"特征组合: {growth_level}{'_' + growth_pattern if growth_pattern else ''}{'+' + '+'.join(sorted(interference_factor_strs)) if interference_factor_strs else ''} [{confidence:.2f}]", "ANNOTATION")
                 self._last_combination_state = current_state
-            
+
+            log_debug("获取特征组合成功完成", "FEATURE_COMBINATION")
             return combination
+
         except Exception as e:
             log_error(f"获取特征组合时出错: {e}", "ERROR")
             import traceback
             log_error(f"异常详情: {traceback.format_exc()}", "ERROR")
+            # 重新抛出异常，让调用方处理
             raise
     
     def set_feature_combination(self, combination):
@@ -612,10 +660,56 @@ class EnhancedAnnotationPanel:
         self.update_pattern_options()
         self.update_interference_options()
     
+    def clear_all_annotations(self):
+        """清空所有标注"""
+        self.reset_annotation()
+
+    def set_annotation(self, hole_id, annotation_data):
+        """设置指定孔位的标注"""
+        try:
+            # 从标注数据创建FeatureCombination
+            combination = FeatureCombination(
+                growth_level=annotation_data.get('growth_level', 'negative'),
+                growth_pattern=annotation_data.get('growth_pattern', ''),
+                interference_factors=set(annotation_data.get('interference_factors', [])),
+                confidence=annotation_data.get('confidence', 1.0)
+            )
+
+            # 设置到面板
+            self.set_feature_combination(combination)
+
+            # 设置微生物类型
+            microbe_type = annotation_data.get('microbe_type', 'bacteria')
+            if hasattr(self, 'current_microbe_type'):
+                self.current_microbe_type.set(microbe_type)
+
+        except Exception as e:
+            log_error(f"设置标注失败: {e}", "ERROR")
+
     def clear_annotation(self):
         """清空标注 - 与reset_annotation相同，为了兼容性"""
         self.reset_annotation()
     
+    def get_all_annotations(self):
+        """获取所有标注数据"""
+        # 增强标注面板只管理当前切片的标注，返回当前标注
+        combination = self.get_current_feature_combination()
+        if combination.growth_level == 'negative':
+            # 阴性标注不保存
+            return {}
+
+        # 使用当前切片ID作为键
+        current_slice_id = getattr(self, 'current_slice_id', 'current')
+        return {
+            current_slice_id: {
+                'growth_level': combination.growth_level,
+                'growth_pattern': combination.growth_pattern,
+                'interference_factors': list(combination.interference_factors),
+                'confidence': combination.confidence,
+                'microbe_type': getattr(self, 'current_microbe_type', tk.StringVar()).get() if hasattr(self, 'current_microbe_type') else 'bacteria'
+            }
+        }
+
     def get_annotation_data(self):
         """获取标注数据 - 为了兼容性"""
         combination = self.get_current_feature_combination()

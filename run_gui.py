@@ -1,65 +1,45 @@
-#!/usr/bin/env python3
 """
-全景图像标注工具GUI启动脚本
+GUI应用启动脚本
+
+用于启动全景标注工具的GUI界面
+使用直接模块启动方式
 """
 
 import sys
 import os
-import tkinter as tk
-from tkinter import messagebox
 from pathlib import Path
 
-# 日志导入
+# 添加项目根目录和src目录到Python路径
+project_root = Path(__file__).parent
+src_dir = project_root / 'src'
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(src_dir))
+
 try:
-    from src.utils.logger import log_info, log_error
-except ImportError:
-    # 如果日志模块不可用，使用print作为后备
-    def log_info(msg, category=""):
-        print(f"[{category}] {msg}" if category else msg)
-    def log_error(msg, category=""):
-        print(f"[{category}] {msg}" if category else msg)
+    # 导入直接的GUI模块
+    from src.ui.panoramic_annotation_gui import main as gui_main
+
+except ImportError as e:
+    print(f"导入模块失败: {e}")
+    print("请确保已安装所有依赖包：pip install -r requirements.txt")
+    sys.exit(1)
+
 
 def main():
     """主函数"""
     try:
-        # 获取项目根目录
-        project_root = Path(__file__).parent.absolute()
+        print("正在启动全景标注工具GUI...")
+        print("使用直接模块启动方式")
 
-        # 添加src目录到Python路径
-        src_path = project_root / 'src'
-        if str(src_path) not in sys.path:
-            sys.path.insert(0, str(src_path))
+        # 直接调用GUI模块的主函数
+        gui_main()
 
-        # 直接导入GUI模块
-        from ui.panoramic_annotation_gui import PanoramicAnnotationGUI
-
-        # 创建主窗口
-        root = tk.Tk()
-
-        # 设置窗口属性
-        root.title("全景图像标注工具 - 微生物药敏检测")
-        root.geometry("1400x900")
-
-        # 创建应用实例
-        app = PanoramicAnnotationGUI(root)
-
-        # 启动主循环
-        root.mainloop()
-
+    except KeyboardInterrupt:
+        print("用户中断应用启动")
     except Exception as e:
-        error_msg = f"启动失败: {str(e)}"
-        print(f"启动错误: {error_msg}")
-
-        # 打印更详细的调试信息
-        import traceback
-        traceback.print_exc()
-
-        try:
-            messagebox.showerror("启动错误", error_msg)
-        except:
-            pass
-
+        print(f"应用启动失败: {e}")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

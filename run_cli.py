@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 """
-批量标注工具CLI运行器
-简化版本，避免相对导入问题
+CLI应用启动脚本
+
+用于启动全景标注工具的命令行界面
 """
 
 import sys
@@ -9,103 +9,197 @@ import os
 import argparse
 from pathlib import Path
 
-# 添加src目录到Python路径
-current_dir = Path(__file__).parent
-src_dir = current_dir / 'src'
-sys.path.insert(0, str(src_dir))
+# 添加项目根目录到Python路径
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-# 直接导入所需模块，避免相对导入
-from core.config import Config
-from core.logger import Logger
-from core.exceptions import ValidationError, FileProcessingError
-from models.dataset import Dataset
-from models.batch_job import BatchJob, JobStatus
-from models.annotation import Annotation
-from services.image_processor import ImageProcessor
+try:
+    # 导入核心模块
+    from src.core.app import create_app, get_app
+    from src.core.config import get_config
+    from src.core.logger import initialize_logging, get_logger
+    from src.core.exceptions import handle_exception
+    from src.core.utils import FileUtils, ValidationUtils
+    
+    # 导入CLI模块
+    from src.cli.main import CLIApplication
+    
+except ImportError as e:
+    print(f"导入模块失败: {e}")
+    print("请确保已安装所有依赖包：pip install -r requirements.txt")
+    sys.exit(1)
 
 
-def cmd_init(project_dir, force=False):
-    """初始化项目配置"""
-    project_dir = Path(project_dir)
-    project_dir.mkdir(parents=True, exist_ok=True)
+def create_parser():
+    """创建命令行参数解析器"""
+    parser = argparse.ArgumentParser(
+        description='全景标注工具 - 命令行界面',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     
-    # 创建配置目录
-    config_dir = project_dir / "config"
-    config_dir.mkdir(exist_ok=True)
+    # 基本参数
+    parser.add_argument(
+        '--config', '-c',
+        type=str,
+        help='配置文件路径'
+    )
     
-    # 创建默认配置文件
-    config_file = config_dir / "config.yaml"
-    if config_file.exists() and not force:
-        print(f"配置文件已存在: {config_file}")
-        print("使用 --force 参数覆盖现有配置")
-        return
+    parser.add_argument(
+        '--log-level', '-l',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='日志级别'
+    )
     
-    default_config = """# 批量标注工具配置文件
-logging:
-  level: INFO
-  file_path: logs/batch_annotation.log
-  max_file_size: 10485760  # 10MB
-  backup_count: 5
-
-processing:
-  batch_size: 32
-  max_workers: 4
-  confidence_threshold: 0.5
-
-models:
-  default_model: yolo_v8
-  model_path: models/
-
-output:
-  format: coco  # json, coco, csv
-  output_dir: output/
-"""
+    parser.add_argument(
+        '--data-dir', '-d',
+        type=str,
+        help='数据目录路径'
+    )
     
-    config_file.write_text(default_config, encoding='utf-8')
+    parser.add_argument(
+        '--output-dir', '-o',
+        type=str,
+        help='输出目录路径'
+    )
     
-    # 创建其他必要目录
-    for dir_name in ['data', 'models', 'output', 'logs']:
-        (project_dir / dir_name).mkdir(exist_ok=True)
+    # 子命令
+    subparsers = parser.add_subparsers(dest='command', help='可用命令')
     
-    print(f"✅ 项目初始化完成: {project_dir}")
-    print(f"📝 配置文件: {config_file}")
-    print(f"📁 数据目录: {project_dir / 'data'}")
-    print(f"🤖 模型目录: {project_dir / 'models'}")
-    print(f"📤 输出目录: {project_dir / 'output'}")
+    # 处理图像命令
+    process_parser = subparsers.add_parser('process', help='处理图像')
+    process_parser.add_argument('input', help='输入图像路径')
+    process_parser.add_argument('--output', help='输出文件路径')
+    process_parser.add_argument('--format', choices=['json', 'csv'], default='json', help='输出格式')
+    
+    # 批量处理命令
+    batch_parser = subparsers.add_parser('batch', help='批量处理')
+    batch_parser.add_argument('input_dir', help='输入目录路径')
+    batch_parser.add_argument('--output-dir', help='输出目录路径')
+    batch_parser.add_argument('--format', choices=['json', 'csv'], default='json', help='输出格式')
+    batch_parser.add_argument('--recursive', action='store_true', help='递归处理子目录')
+    
+    # 验证命令
+    validate_parser = subparsers.add_parser('validate', help='验证数据')
+    validate_parser.add_argument('input', help='输入文件路径')
+    validate_parser.add_argument('--schema', help='验证模式文件路径')
+    
+    # 统计命令
+    stats_parser = subparsers.add_parser('stats', help='统计信息')
+    stats_parser.add_argument('input', help='输入文件路径')
+    stats_parser.add_argument('--format', choices=['text', 'json'], default='text', help='输出格式')
+    
+    # 导出命令
+    export_parser = subparsers.add_parser('export', help='导出数据')
+    export_parser.add_argument('input', help='输入文件路径')
+    export_parser.add_argument('--output', help='输出文件路径')
+    export_parser.add_argument('--format', choices=['json', 'csv', 'excel'], default='json', help='输出格式')
+    
+    # 导入命令
+    import_parser = subparsers.add_parser('import', help='导入数据')
+    import_parser.add_argument('input', help='输入文件路径')
+    import_parser.add_argument('--format', choices=['json', 'csv'], help='输入格式')
+    import_parser.add_argument('--validate', action='store_true', help='验证数据')
+    
+    return parser
 
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(
-        description="批量标注工具 - 基于AI的图像批量标注解决方案",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例用法:
-  # 初始化新项目
-  python run_cli.py init my_project
-  
-  # 运行快速示例
-  python examples/quick_start.py
-        """
-    )
-    
-    subparsers = parser.add_subparsers(dest='command', help='可用命令')
-    
-    # init命令
-    init_parser = subparsers.add_parser('init', help='初始化项目')
-    init_parser.add_argument('project_dir', help='项目目录路径')
-    init_parser.add_argument('--force', action='store_true', help='强制覆盖现有配置')
-    
+    parser = create_parser()
     args = parser.parse_args()
     
-    if not args.command:
-        parser.print_help()
-        return
-    
-    # 执行对应命令
-    if args.command == 'init':
-        cmd_init(args.project_dir, args.force)
+    try:
+        # 初始化日志系统
+        initialize_logging()
+        logger = get_logger(__name__)
+        
+        logger.info("正在启动全景标注工具CLI...")
+        
+        # 加载配置
+        if args.config:
+            # 使用指定配置文件
+            from src.core.config import ConfigManager
+            config_manager = ConfigManager(args.config)
+            app_config = config_manager.get_config()
+        else:
+            # 使用默认配置
+            app_config = get_config()
+        
+        # 设置日志级别
+        if args.log_level:
+            app_config.logging.level = args.log_level
+        
+        # 设置数据目录
+        if args.data_dir:
+            app_config.data_dir = args.data_dir
+        
+        # 设置输出目录
+        if args.output_dir:
+            # 确保目录存在
+            FileUtils.ensure_dir(args.output_dir)
+            app_config.temp_dir = args.output_dir
+        
+        # 创建应用实例
+        app = create_app(app_config)
+        
+        # 注册CLI应用服务
+        app.register_service(
+            'cli_app',
+            lambda: CLIApplication(app),
+            dependencies=['config', 'event_manager'],
+            singleton=True,
+            priority=50
+        )
+        
+        # 启动核心应用
+        app.start()
+        
+        # 获取CLI应用实例
+        cli_app = app.get_service('cli_app')
+        
+        # 注册应用事件处理器
+        def on_app_error(error):
+            logger.error(f"应用错误: {error}")
+            print(f"错误: {error}")
+        
+        def on_app_stopping():
+            logger.info("应用正在停止...")
+        
+        app.subscribe_event('app_error', on_app_error)
+        app.subscribe_event('app_stopping', on_app_stopping)
+        
+        # 执行命令
+        if args.command == 'process':
+            cli_app.process_image(args.input, args.output, args.format)
+        elif args.command == 'batch':
+            cli_app.batch_process(args.input_dir, args.output_dir, args.format, args.recursive)
+        elif args.command == 'validate':
+            cli_app.validate_data(args.input, args.schema)
+        elif args.command == 'stats':
+            cli_app.show_stats(args.input, args.format)
+        elif args.command == 'export':
+            cli_app.export_data(args.input, args.output, args.format)
+        elif args.command == 'import':
+            cli_app.import_data(args.input, args.format, args.validate)
+        else:
+            # 显示帮助信息
+            cli_app.show_help()
+        
+    except KeyboardInterrupt:
+        logger.info("用户中断应用")
+    except Exception as e:
+        logger.error(f"应用执行失败: {e}")
+        print(f"应用执行失败: {e}")
+        sys.exit(1)
+    finally:
+        # 确保应用正确停止
+        try:
+            app = get_app()
+            app.stop()
+        except:
+            pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

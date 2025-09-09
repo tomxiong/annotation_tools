@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-from core.exceptions import ValidationError
+from src.core.exceptions import ValidationError
 
 
 class ImageProcessor:

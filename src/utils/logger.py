@@ -30,9 +30,9 @@ class AnnotationLogger:
     
     def _setup_handlers(self):
         """设置日志处理器"""
-        # 控制台处理器 - 只显示警告和错误，保持控制台简洁
+        # 控制台处理器 - 只显示错误，保持控制台极简
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.ERROR)
 
         # 文件处理器 - 保留所有调试信息用于调试
         log_dir = Path("logs")
@@ -40,16 +40,21 @@ class AnnotationLogger:
 
         file_handler = logging.FileHandler(log_dir / "annotation.log", encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
-        
-        # 格式化器
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+
+        # 控制台格式化器 - 简洁格式
+        console_formatter = logging.Formatter(
+            '[%(levelname)s] %(message)s'
+        )
+
+        # 文件格式化器 - 详细格式
+        file_formatter = logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(name)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        
-        console_handler.setFormatter(formatter)
-        file_handler.setFormatter(formatter)
-        
+
+        console_handler.setFormatter(console_formatter)
+        file_handler.setFormatter(file_formatter)
+
         self.logger.addHandler(console_handler)
         self.logger.addHandler(file_handler)
     
