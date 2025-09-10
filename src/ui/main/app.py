@@ -14,7 +14,7 @@ import os
 from src.ui.utils.event_bus import EventBus, EventType, start_event_bus, stop_event_bus
 from src.ui.utils.base_components import BaseController
 from src.ui.models.ui_state import UIStateManager, initialize_ui_state
-from src.ui.controllers import MainController, ImageController, AnnotationController
+from src.ui.controllers import MainController
 from src.services.panoramic_image_service import PanoramicImageService
 from src.services.annotation_engine import AnnotationEngine
 from src.services.config_file_service import ConfigFileService
@@ -138,7 +138,7 @@ class PanoramicAnnotationApp:
             # 创建主窗口
             self.root = tk.Tk()
             self.root.title("全景标注工具")
-            self.root.geometry("1600x900")
+            self.root.geometry("1600x900")                        
             
             # 设置窗口图标和其他属性
             self._setup_window()
@@ -170,6 +170,9 @@ class PanoramicAnnotationApp:
         # 设置最小窗口大小
         self.root.minsize(1400, 800)
         
+        self.initial_geometry = "1600x900"
+        self.current_geometry = "1600x900"
+        
         # 居中窗口
         self._center_window()
         
@@ -199,37 +202,21 @@ class PanoramicAnnotationApp:
     def _initialize_controllers(self):
         """初始化控制器"""
         logger.info("Initializing controllers...")
-        
+
         try:
-            # 创建主控制器
+            # 创建主控制器 - 这是主要的控制器，包含所有UI逻辑
             self.main_controller = MainController(self.container)
             self.main_controller.initialize()
-            
-            # 创建图像控制器
-            image_service = self.container.get('image_service') if self.container.has('image_service') else None
-            self.image_controller = ImageController(image_service)
-            self.image_controller.initialize()
-            
-            # 创建标注控制器
-            annotation_engine = self.container.get('annotation_engine') if self.container.has('annotation_engine') else None
-            self.annotation_controller = AnnotationController(annotation_engine)
-            self.annotation_controller.initialize()
-            
-            # 注册控制器
-            self.controllers.extend([
-                self.main_controller,
-                self.image_controller,
-                self.annotation_controller
-            ])
-            
-            # 注册到容器
+
+            # 注册主控制器到容器
             if self.container:
                 self.container.register('main_controller', self.main_controller, singleton=True)
-                self.container.register('image_controller', self.image_controller, singleton=True)
-                self.container.register('annotation_controller', self.annotation_controller, singleton=True)
-            
+
+            # 将主控制器添加到控制器列表
+            self.controllers.append(self.main_controller)
+
             logger.info("Controllers initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize controllers: {e}")
             raise
@@ -389,19 +376,83 @@ def create_app() -> PanoramicAnnotationApp:
 def main():
     """主入口函数"""
     try:
+        # 设置日志级别为DEBUG以显示调试信息
+        import logging
+        logging.getLogger().setLevel(logging.DEBUG)
+
+        # 同时设置所有控制台处理器的级别为DEBUG
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setLevel(logging.DEBUG)
+
+        logger.info("日志级别已设置为DEBUG")
+
         # 创建应用程序
         app = create_app()
-        
+
+        # 启用坐标调试模式（用于调试坐标定位问题）
+        if hasattr(app, 'main_controller') and app.main_controller:
+            app.main_controller.set_coordinate_debug_mode(True)
+            logger.info("坐标调试模式已启用")
+
         # 运行应用程序
         success = app.run()
-        
+
         # 退出代码
         sys.exit(0 if success else 1)
-        
+
     except Exception as e:
         logger.error(f"Fatal application error: {e}")
         sys.exit(1)
 
 
+def test_coordinate_debug():
+    """测试坐标调试功能"""
+    try:
+        # 设置日志级别为DEBUG
+        import logging
+        logging.getLogger().setLevel(logging.DEBUG)
+
+        # 设置所有控制台处理器的级别为DEBUG
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setLevel(logging.DEBUG)
+
+        print("=== 坐标调试功能测试 ===")
+        print("1. 创建应用程序...")
+        app = create_app()
+
+        print("2. 启用坐标调试模式...")
+        if hasattr(app, 'main_controller') and app.main_controller:
+            app.main_controller.set_coordinate_debug_mode(True)
+            print("✓ 坐标调试模式已启用")
+
+            print("3. 测试坐标调整功能...")
+            # 设置一些测试偏移
+            app.main_controller.set_coordinate_offset(5.0, -3.0)
+            app.main_controller.set_coordinate_scale_adjust(1.02)
+
+            # 获取调试信息
+            debug_info = app.main_controller.get_coordinate_debug_info()
+            print(f"✓ 当前调试配置: {debug_info}")
+
+            print("4. 重置调整参数...")
+            app.main_controller.reset_coordinate_adjustments()
+            debug_info = app.main_controller.get_coordinate_debug_info()
+            print(f"✓ 重置后配置: {debug_info}")
+
+        print("=== 测试完成 ===")
+        print("现在可以运行应用程序查看详细的坐标转换日志")
+
+    except Exception as e:
+        print(f"测试失败: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--test-debug":
+        test_coordinate_debug()
+    else:
+        main()

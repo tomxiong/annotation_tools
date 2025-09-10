@@ -103,6 +103,12 @@ class UIManager:
         ttk.Button(self.toolbar, text="导出训练数据",
                   command=self.controller._export_training_data).pack(side=tk.LEFT, padx=(0, 10))
 
+        # 调试日志开关按钮
+        self.debug_button = ttk.Button(self.toolbar, text="调试日志: 开",
+                                      command=self._toggle_debug_logging)
+        self.debug_button.pack(side=tk.LEFT, padx=(0, 10))
+        self._update_debug_button_text()
+
     def _create_panoramic_panel(self, parent):
         """创建全景图显示面板"""
         panoramic_frame = ttk.LabelFrame(parent, text="全景图 (12×10孔位布局)")
@@ -124,8 +130,11 @@ class UIManager:
 
     def _create_control_panel(self, parent):
         """创建右侧控制面板"""
-        right_frame = ttk.Frame(parent, width=360)
+        # 使用相对宽度而不是固定宽度，提高适应性
+        right_frame = ttk.Frame(parent)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+        # 设置最小宽度，确保内容不被压缩
+        right_frame.configure(width=380)
         right_frame.pack_propagate(False)
 
         # 创建统计面板
@@ -238,10 +247,6 @@ class UIManager:
         self.slice_canvas = tk.Canvas(slice_frame, bg='white', width=150, height=150)
         self.slice_canvas.pack(padx=5, pady=3)
 
-        # 创建图像画布 - 移到切片面板中
-        self.controller.image_canvas = ImageCanvas(slice_frame, self.controller)
-        self.controller.image_canvas.get_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 3))
-
         # 切片信息区域
         info_frame = ttk.Frame(slice_frame)
         info_frame.pack(fill=tk.X, padx=5, pady=(0, 3))
@@ -266,23 +271,11 @@ class UIManager:
         ann_frame = ttk.LabelFrame(parent, text="标注控制")
         ann_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
 
-        # 创建导航面板
-        self.controller.navigation_panel = NavigationPanel(ann_frame, self.controller)
-        self.controller.navigation_panel.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 创建标注面板
-        self.controller.annotation_panel = AnnotationPanel(ann_frame, self.controller)
-        self.controller.annotation_panel.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 创建图像画布
-        self.controller.image_canvas = ImageCanvas(ann_frame, self.controller)
-        self.controller.image_canvas.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 创建增强标注面板 - 减少边距，不扩展
+        # 创建增强标注面板 - 作为主要的标注界面
         self.controller.enhanced_annotation_frame = ttk.Frame(ann_frame)
-        self.controller.enhanced_annotation_frame.pack(fill=tk.X, padx=3, pady=(3, 3))
+        self.controller.enhanced_annotation_frame.pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
 
-        # 初始化enhanced annotation panel
+        # 初始化增强标注面板
         self.controller.annotation_panel = EnhancedAnnotationPanel(
             self.controller.enhanced_annotation_frame,
             on_annotation_change=self.controller._on_enhanced_annotation_change
@@ -358,3 +351,16 @@ class UIManager:
     def get_panoramic_combobox(self):
         """获取全景图下拉列表"""
         return self.panoramic_combobox
+
+    def _toggle_debug_logging(self):
+        """切换调试日志开关"""
+        self.controller.toggle_debug_logging()
+        self._update_debug_button_text()
+
+    def _update_debug_button_text(self):
+        """更新调试按钮文本"""
+        if hasattr(self, 'debug_button') and self.debug_button:
+            if self.controller.is_debug_enabled():
+                self.debug_button.config(text="调试日志: 开")
+            else:
+                self.debug_button.config(text="调试日志: 关")

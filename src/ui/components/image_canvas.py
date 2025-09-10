@@ -262,10 +262,16 @@ class ImageCanvas(BaseFrameView, ComponentMixin):
                 
                 # 绘制孔位编号
                 if self.show_hole_numbers:
+                    font_size = int(12 * self.zoom_level)
+
+                    # Debug日志：切片孔位文字字体和定位信息
+                    if hole_id in ['0000', '0011', '0023', '0095']:  # 记录特定孔位
+                        logger.debug(f"[SLICE_HOLE_FONT] 孔位{hole_id}: 位置({center_x:.1f},{center_y:.1f}), 字体大小={font_size}, 缩放级别={self.zoom_level:.2f}, 颜色=white, 画布=slice_canvas")
+
                     self.canvas.create_text(
                         center_x, center_y,
                         text=hole_id, fill='white',
-                        font=('Arial', int(8 * self.zoom_level)),
+                        font=('Arial', font_size),
                         tags=f'hole_text_{hole_id}'
                     )
                 

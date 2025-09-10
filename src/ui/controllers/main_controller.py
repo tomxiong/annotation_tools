@@ -29,6 +29,7 @@ from src.ui.enhanced_annotation_panel import EnhancedAnnotationPanel
 from src.ui.components.navigation_panel import NavigationPanel
 from src.ui.components.annotation_panel import AnnotationPanel
 from src.ui.components.image_canvas import ImageCanvas
+from src.utils.logger import enable_debug_logging, disable_debug_logging, is_debug_logging_enabled
 
 # Import new manager classes
 from .ui_manager import UIManager
@@ -87,6 +88,12 @@ class MainController(BaseController):
         self.initial_geometry = "1600x900"
         self.current_geometry = "1600x900"
 
+        # 坐标定位调试配置
+        self.debug_coordinate_offset = False  # 是否启用坐标偏移调试
+        self.coordinate_offset_x = 0.0  # X轴坐标偏移调整
+        self.coordinate_offset_y = 0.0  # Y轴坐标偏移调整
+        self.coordinate_scale_adjust = 1.0  # 缩放比例调整因子
+
         # 状态变量
         self.panoramic_dir_var = tk.StringVar()
         self.hole_number_var = tk.StringVar(value="1")
@@ -113,12 +120,21 @@ class MainController(BaseController):
         try:
             logger.info("Initializing MainController...")
 
-            # 获取服务实例
+            # 获取服务实例 - 确保依赖注入正确
             if self.container:
-                self.image_service = self.container.get('image_service')
-                self.annotation_engine = self.container.get('annotation_engine')
-                self.config_service = self.container.get('config_service')
-                self.config = self.container.get('config')
+                try:
+                    self.image_service = self.container.get('image_service')
+                    self.annotation_engine = self.container.get('annotation_engine')
+                    self.config_service = self.container.get('config_service')
+                    self.config = self.container.get('config')
+                    logger.info("Services injected successfully")
+                except ValueError as e:
+                    logger.warning(f"Some services not available in container: {e}")
+                    # 设置默认值
+                    self.image_service = None
+                    self.annotation_engine = None
+                    self.config_service = None
+                    self.config = None
 
             # 创建UI相关服务
             self.hole_manager = HoleManager()
@@ -130,7 +146,8 @@ class MainController(BaseController):
             # 获取根窗口
             self.root = self._get_root_window()
 
-            # 初始化管理器
+            # 初始化管理器 - 按依赖顺序
+            logger.info("Initializing managers...")
             self.ui_manager.initialize(self.root)
             self.navigation_manager.initialize()
             self.annotation_manager.initialize()
@@ -185,206 +202,18 @@ class MainController(BaseController):
         root.minsize(1400, 800)  # 设置最小尺寸
         return root
     
-    def _create_ui_components(self):
-        """创建UI组件"""
-        if not self.root:
-            return
+    # UI组件创建已移至UIManager，移除重复方法
 
-        # 创建主框架
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 创建工具栏
-        self._create_toolbar(main_frame)
-
-        # 创建内容区域
-        content_frame = ttk.Frame(main_frame)
-        content_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
-
-        # 创建全景图显示区域（左侧）
-        self._create_panoramic_panel(content_frame)
-
-        # 创建分隔符
-        separator = ttk.Separator(content_frame, orient='vertical')
-        separator.pack(side=tk.LEFT, fill=tk.Y, padx=5)
-
-        # 创建右侧控制面板
-        self._create_control_panel(content_frame)
-
-        # 创建状态栏
-        self._create_status_bar(main_frame)
-
-    def _create_toolbar(self, parent):
-        """创建工具栏"""
-        toolbar = ttk.Frame(parent)
-        toolbar.pack(fill=tk.X, pady=(0, 5))
-
-        # 全景图目录选择
-        ttk.Label(toolbar, text="全景图:").pack(side=tk.LEFT, padx=(0, 5))
-
-        self.panoramic_dir_var = tk.StringVar()
-        panoramic_dir_entry = ttk.Entry(toolbar, textvariable=self.panoramic_dir_var, width=45)
-        panoramic_dir_entry.pack(side=tk.LEFT, padx=(0, 5))
-
-        # 操作按钮
-        ttk.Button(toolbar, text="浏览并加载",
-                  command=self._select_panoramic_directory).pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Button(toolbar, text="加载标注",
-                  command=self._load_annotations).pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Button(toolbar, text="保存标注",
-                  command=self._save_annotations).pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Button(toolbar, text="导入模型建议",
-                  command=self._import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Button(toolbar, text="导出训练数据",
-                  command=self._export_training_data).pack(side=tk.LEFT, padx=(0, 10))
-
-    # 全景图面板创建已移至ui_manager
-
-    def _create_control_panel(self, parent):
-        """创建右侧控制面板"""
-        # 右侧面板宽度固定
-        right_frame = ttk.Frame(parent, width=360)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
-        right_frame.pack_propagate(False)
-
-        # 创建统计面板
-        self._create_stats_panel(right_frame)
-
-        # 创建导航面板
-        self._create_navigation_panel(right_frame)
-
-        # 创建切片显示区域
-        self._create_slice_panel(right_frame)
-
-        # 创建标注控制面板
-        self._create_annotation_panel(right_frame)
-
-    def _create_stats_panel(self, parent):
-        """创建统计面板"""
-        stats_frame = ttk.LabelFrame(parent, text="统计信息")
-        stats_frame.pack(fill=tk.X, pady=(0, 2))
-
-        self.stats_label = ttk.Label(stats_frame, text="统计: 未标注 0, 阴性 0, 弱生长 0, 阳性 0")
-        self.stats_label.pack(padx=5, pady=3)
-
-        # 视图模式选择区域
-        self._create_view_mode_panel(parent)
-
-    def _create_view_mode_panel(self, parent):
-        """创建视图模式选择面板"""
-        view_frame = ttk.LabelFrame(parent, text="视图模式")
-        view_frame.pack(fill=tk.X, pady=(2, 2))
-
-        # 视图模式单选按钮
-        mode_frame = ttk.Frame(view_frame)
-        mode_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        self.view_mode_var = tk.StringVar(value="manual")
-
-        self.manual_radio = ttk.Radiobutton(mode_frame, text="人工",
-                                          variable=self.view_mode_var,
-                                          value="manual", command=self._on_view_mode_changed)
-        self.manual_radio.pack(side=tk.LEFT, padx=5)
-
-        self.model_radio = ttk.Radiobutton(mode_frame, text="模型",
-                                         variable=self.view_mode_var,
-                                         value="model", command=self._on_view_mode_changed)
-        self.model_radio.pack(side=tk.LEFT, padx=5)
-
-    def _create_navigation_panel(self, parent):
-        """创建导航面板"""
-        nav_frame = ttk.LabelFrame(parent, text="导航控制 (快捷键)")
-        nav_frame.pack(fill=tk.X, pady=(0, 5))
-
-        # 第一行：全景图导航
-        top_frame = ttk.Frame(nav_frame)
-        top_frame.pack(fill=tk.X, padx=5, pady=3)
-
-        ttk.Label(top_frame, text="全景图:").pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(top_frame, text="◀", width=3,
-                  command=self._go_prev_panoramic).pack(side=tk.LEFT, padx=1)
-
-        self.panoramic_combobox = ttk.Combobox(top_frame, width=12)
-        self.panoramic_combobox.pack(side=tk.LEFT, padx=2)
-        self.panoramic_combobox.bind('<<ComboboxSelected>>', self._on_panoramic_selected)
-
-        ttk.Button(top_frame, text="▶", width=3,
-                  command=self._go_next_panoramic).pack(side=tk.LEFT, padx=1)
-
-        # 第二行：孔位导航
-        bottom_frame = ttk.Frame(nav_frame)
-        bottom_frame.pack(fill=tk.X, padx=5, pady=3)
-
-        # 孔位跳转
-        hole_frame = ttk.Frame(bottom_frame)
-        hole_frame.pack(side=tk.LEFT)
-
-        ttk.Label(hole_frame, text="跳转:").pack(side=tk.LEFT, padx=(0, 2))
-
-        self.hole_number_var = tk.StringVar(value="1")
-        hole_entry = ttk.Entry(hole_frame, textvariable=self.hole_number_var, width=4)
-        hole_entry.pack(side=tk.LEFT, padx=1)
-        hole_entry.bind('<Return>', self._go_to_hole)
-
-        # 序列导航
-        seq_frame = ttk.Frame(bottom_frame)
-        seq_frame.pack(side=tk.RIGHT)
-
-        ttk.Button(seq_frame, text="◀◀", width=4,
-                  command=self._go_first_hole).pack(side=tk.LEFT, padx=1)
-        ttk.Button(seq_frame, text="◀", width=4,
-                  command=self._go_prev_hole).pack(side=tk.LEFT, padx=1)
-        ttk.Button(seq_frame, text="▶", width=4,
-                  command=self._go_next_hole).pack(side=tk.LEFT, padx=1)
-        ttk.Button(seq_frame, text="▶▶", width=4,
-                  command=self._go_last_hole).pack(side=tk.LEFT, padx=1)
-
-        # 进度信息
-        self.progress_label = ttk.Label(bottom_frame, text="0/0")
-        self.progress_label.pack(side=tk.LEFT, expand=True)
-
-        # 画布点击提示
-        click_label = ttk.Label(nav_frame, text="提示: 点击全景图跳转对应孔位",
-                               font=('TkDefaultFont', 8))
-        click_label.pack(side=tk.BOTTOM, padx=5, pady=(0, 3))
-
-    # 切片面板创建已移至ui_manager
-
-    def _create_annotation_panel(self, parent):
-        """创建标注控制面板"""
-        ann_frame = ttk.LabelFrame(parent, text="标注控制")
-        ann_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
-
-        # 创建导航面板
-        self.navigation_panel = NavigationPanel(ann_frame, self)
-        self.navigation_panel.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 创建标注面板
-        self.annotation_panel = AnnotationPanel(ann_frame, self)
-        self.annotation_panel.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 创建图像画布
-        self.image_canvas = ImageCanvas(ann_frame, self)
-        self.image_canvas.get_widget().pack(fill=tk.BOTH, expand=True, padx=3, pady=(3, 3))
-
-        # 增强标注面板已在ui_manager中创建
-
-    def _create_status_bar(self, parent):
-        """创建状态栏"""
-        status_frame = ttk.Frame(parent)
-        status_frame.pack(fill=tk.X, pady=(5, 0))
-
-        self.status_label = ttk.Label(status_frame, text="就绪", relief=tk.SUNKEN)
-        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    # UI创建方法已移至UIManager，移除重复方法
     
     def _connect_components(self):
         """连接组件"""
-        if self.navigation_panel:
-            self.navigation_panel.set_image_canvas(self.image_canvas)
+        logger.info("Connecting components...")
+
+        # 确保UI管理器已正确初始化
+        if not hasattr(self, 'ui_manager') or not self.ui_manager:
+            logger.warning("UIManager not available for component connection")
+            return
 
         # 设置视图模式变更回调
         if hasattr(self, 'view_mode_var'):
@@ -393,6 +222,8 @@ class MainController(BaseController):
         # 连接增强标注面板的回调
         if hasattr(self, 'annotation_panel') and self.annotation_panel:
             self.annotation_panel.on_annotation_change = self._on_enhanced_annotation_change
+
+        logger.info("Components connected successfully")
     
     def _subscribe_events(self):
         """订阅事件"""
@@ -998,8 +829,8 @@ class MainController(BaseController):
 
         try:
             # 获取点击位置
-            x = event.x
-            y = event.y
+            canvas_x = event.x
+            canvas_y = event.y
 
             # 获取画布尺寸
             if hasattr(self, 'ui_manager') and self.ui_manager and hasattr(self.ui_manager, 'panoramic_canvas') and self.ui_manager.panoramic_canvas:
@@ -1009,22 +840,31 @@ class MainController(BaseController):
                 logger.warning("panoramic_canvas not available for click handling")
                 return
 
-            # 计算缩放比例
+            # 计算缩放比例和偏移
             img_width, img_height = self.panoramic_image.size
             scale_x = canvas_width / img_width
             scale_y = canvas_height / img_height
             scale = min(scale_x, scale_y)
 
-            # 计算图像在画布上的偏移
-            offset_x = (canvas_width - img_width * scale) / 2
-            offset_y = (canvas_height - img_height * scale) / 2
+            # 计算图像在画布上的偏移（居中显示）
+            scaled_width = img_width * scale
+            scaled_height = img_height * scale
+            offset_x = (canvas_width - scaled_width) / 2
+            offset_y = (canvas_height - scaled_height) / 2
 
             # 转换为图像坐标
-            img_x = (x - offset_x) / scale
-            img_y = (y - offset_y) / scale
+            img_x = (canvas_x - offset_x) / scale
+            img_y = (canvas_y - offset_y) / scale
+
+            # Debug日志：点击坐标转换
+            logger.debug(f"[PANORAMIC_CLICK] 点击画布坐标: ({canvas_x}, {canvas_y})")
+            logger.debug(f"[PANORAMIC_CLICK] 转换为图像坐标: ({img_x:.1f}, {img_y:.1f})")
+            logger.debug(f"[PANORAMIC_CLICK] 缩放比例: {scale:.3f}, 偏移: ({offset_x:.1f}, {offset_y:.1f})")
 
             # 查找点击位置对应的孔位
             clicked_hole = None
+            min_distance = float('inf')
+
             for row in range(10):  # 10行
                 for col in range(12):  # 12列
                     hole_number = row * 12 + col + 1
@@ -1034,19 +874,22 @@ class MainController(BaseController):
                     if hole_pos:
                         hole_x, hole_y = hole_pos
 
-                        # 检查点击是否在孔位范围内
-                        distance = ((img_x - hole_x) ** 2 + (img_y - hole_y) ** 2) ** 0.5
-                        if distance <= 15:  # 15像素半径
-                            clicked_hole = hole_number
-                            break
+                        # 应用坐标调整参数到孔位位置
+                        adjusted_hole_x, adjusted_hole_y = self._apply_coordinate_adjustments(hole_x, hole_y, 1.0)
 
-                if clicked_hole:
-                    break
+                        # 检查点击是否在孔位范围内（使用调整后的坐标进行比较）
+                        distance = ((img_x - adjusted_hole_x) ** 2 + (img_y - adjusted_hole_y) ** 2) ** 0.5
+                        if distance <= 15:  # 15像素半径
+                            if distance < min_distance:
+                                min_distance = distance
+                                clicked_hole = hole_number
 
             if clicked_hole:
+                logger.debug(f"[PANORAMIC_CLICK] 找到最近孔位: {clicked_hole}, 距离: {min_distance:.1f}")
                 self._switch_to_hole(clicked_hole)
                 self.update_status(f"跳转到孔位: {clicked_hole}")
             else:
+                logger.debug(f"[PANORAMIC_CLICK] 未找到有效孔位，最近距离: {min_distance:.1f}")
                 self.update_status("点击位置未找到有效孔位")
 
         except Exception as e:
@@ -1416,14 +1259,27 @@ class MainController(BaseController):
                     canvas_height = 600
                     logger.debug("panoramic_canvas not available, using default dimensions")
 
-                # 计算缩放比例
-                img_width, img_height = self.panoramic_image.size
-                scale_factor = min(canvas_width / img_width, canvas_height / img_height)
+                # 获取原始图像尺寸（在缩放之前）
+                original_img_width, original_img_height = self.panoramic_image.size
 
+                # 根据画布尺寸调整HoleManager的坐标参数（使用原始图像尺寸）
+                if hasattr(self, 'hole_manager') and self.hole_manager:
+                    self.hole_manager.adjust_coordinates_for_canvas(
+                        canvas_width, canvas_height, original_img_width, original_img_height
+                    )
+
+                # 计算缩放比例
+                scale_factor = min(canvas_width / original_img_width, canvas_height / original_img_height)
+
+                # 保存缩放后的图像尺寸用于后续计算
                 if scale_factor < 1.0:
-                    new_width = int(img_width * scale_factor)
-                    new_height = int(img_height * scale_factor)
+                    new_width = int(original_img_width * scale_factor)
+                    new_height = int(original_img_height * scale_factor)
                     self.panoramic_image = self.panoramic_image.resize((new_width, new_height))
+                    # 更新图像尺寸为缩放后的尺寸
+                    img_width, img_height = new_width, new_height
+                else:
+                    img_width, img_height = original_img_width, original_img_height
 
                 self.panoramic_photo = ImageTk.PhotoImage(self.panoramic_image)
 
@@ -1462,12 +1318,33 @@ class MainController(BaseController):
                 logger.warning("panoramic_canvas not available for drawing hole grid")
                 return
 
-            # 计算缩放比例
+            # 确保HoleManager的坐标已根据当前画布调整
+            if hasattr(self, 'hole_manager') and self.hole_manager:
+                self.hole_manager.adjust_coordinates_for_canvas(
+                    canvas_width, canvas_height, img_width, img_height
+                )
+
+            # 计算缩放比例和偏移
             scale_x = canvas_width / img_width
             scale_y = canvas_height / img_height
             scale = min(scale_x, scale_y)
 
+            # 计算图像在画布上的偏移（居中显示）
+            scaled_width = img_width * scale
+            scaled_height = img_height * scale
+            offset_x = (canvas_width - scaled_width) / 2
+            offset_y = (canvas_height - scaled_height) / 2
+
+            # Debug日志：输出坐标转换参数
+            logger.debug(f"[HOLE_GRID] 画布尺寸: {canvas_width}x{canvas_height}")
+            logger.debug(f"[HOLE_GRID] 图像尺寸: {img_width}x{img_height}")
+            logger.debug(f"[HOLE_GRID] 缩放比例: {scale:.3f} (scale_x={scale_x:.3f}, scale_y={scale_y:.3f})")
+            logger.debug(f"[HOLE_GRID] 缩放后尺寸: {scaled_width:.1f}x{scaled_height:.1f}")
+            logger.debug(f"[HOLE_GRID] 居中偏移: offset_x={offset_x:.1f}, offset_y={offset_y:.1f}")
+            logger.debug(f"[HOLE_GRID] HoleManager坐标: first_hole=({self.hole_manager.first_hole_x},{self.hole_manager.first_hole_y})")
+
             # 绘制孔位
+            drawn_count = 0
             for row in range(10):  # 10行
                 for col in range(12):  # 12列
                     hole_number = row * 12 + col + 1
@@ -1475,8 +1352,19 @@ class MainController(BaseController):
                     # 获取孔位位置
                     hole_pos = self.hole_manager.get_hole_center_coordinates(hole_number)
                     if hole_pos:
-                        x = int(hole_pos[0] * scale)
-                        y = int(hole_pos[1] * scale)
+                        # 原始图像坐标
+                        orig_x, orig_y = hole_pos
+
+                        # 应用坐标调整参数
+                        adjusted_x, adjusted_y = self._apply_coordinate_adjustments(orig_x, orig_y, scale)
+
+                        # 转换到画布坐标：缩放 + 偏移
+                        x = int(adjusted_x + offset_x)
+                        y = int(adjusted_y + offset_y)
+
+                        # Debug日志：每个孔位的坐标转换
+                        if hole_number <= 5 or hole_number % 20 == 0:  # 只记录前5个和每20个孔位
+                            logger.debug(f"[HOLE_GRID] 孔位{hole_number}: 原始({orig_x:.1f},{orig_y:.1f}) -> 调整后({adjusted_x:.1f},{adjusted_y:.1f}) -> 画布({x},{y})")
 
                         # 绘制孔位圆圈
                         radius = 8
@@ -1485,11 +1373,19 @@ class MainController(BaseController):
                             outline='red', width=2
                         )
 
+                        # Debug日志：孔位编号字体和定位信息
+                        if hole_number <= 5 or hole_number % 20 == 0:  # 只记录前5个和每20个孔位
+                            logger.debug(f"[HOLE_GRID_FONT] 孔位{hole_number}: 位置({x},{y}), 字体大小=12, 颜色=red, 画布=panoramic_canvas")
+
                         # 绘制孔位编号
                         self.ui_manager.panoramic_canvas.create_text(
                             x, y, text=str(hole_number),
-                            fill='red', font=('Arial', 8, 'bold')
+                            fill='red', font=('Arial', 16, 'bold')
                         )
+
+                        drawn_count += 1
+
+            logger.debug(f"[HOLE_GRID] 成功绘制 {drawn_count} 个孔位")
 
         except Exception as e:
             logger.error(f"绘制孔位网格失败: {e}", exc_info=True)
@@ -1508,16 +1404,33 @@ class MainController(BaseController):
                 logger.warning("panoramic_canvas not available for drawing current hole indicator")
                 return
 
-            # 计算缩放比例
+            # 计算缩放比例和偏移
             scale_x = canvas_width / img_width
             scale_y = canvas_height / img_height
             scale = min(scale_x, scale_y)
 
+            # 计算图像在画布上的偏移（居中显示）
+            scaled_width = img_width * scale
+            scaled_height = img_height * scale
+            offset_x = (canvas_width - scaled_width) / 2
+            offset_y = (canvas_height - scaled_height) / 2
+
             # 获取当前孔位位置
             hole_pos = self.hole_manager.get_hole_center_coordinates(self.current_hole_number)
             if hole_pos:
-                x = int(hole_pos[0] * scale)
-                y = int(hole_pos[1] * scale)
+                # 原始图像坐标
+                orig_x, orig_y = hole_pos
+
+                # 应用坐标调整参数
+                adjusted_x, adjusted_y = self._apply_coordinate_adjustments(orig_x, orig_y, scale)
+
+                # 转换到画布坐标：缩放 + 偏移
+                x = int(adjusted_x + offset_x)
+                y = int(adjusted_y + offset_y)
+
+                # Debug日志：当前孔位坐标转换
+                logger.debug(f"[CURRENT_HOLE] 当前孔位{self.current_hole_number}: 原始({orig_x:.1f},{orig_y:.1f}) -> 调整后({adjusted_x:.1f},{adjusted_y:.1f}) -> 画布({x},{y})")
+                logger.debug(f"[CURRENT_HOLE] 缩放比例: {scale:.3f}, 偏移: ({offset_x:.1f},{offset_y:.1f})")
 
                 # 绘制指示框
                 size = 12
@@ -1525,6 +1438,8 @@ class MainController(BaseController):
                     x - size, y - size, x + size, y + size,
                     outline='yellow', width=3
                 )
+
+                logger.debug(f"[CURRENT_HOLE] 绘制黄色指示框: ({x-size},{y-size}) to ({x+size},{y+size})")
 
         except Exception as e:
             logger.error(f"绘制当前孔位指示框失败: {e}", exc_info=True)
@@ -2167,3 +2082,104 @@ class MainController(BaseController):
     def _export_training_data(self):
         """导出训练数据"""
         self.file_manager.export_training_data()
+
+    # ==================== 坐标定位调试方法 ====================
+
+    def set_coordinate_debug_mode(self, enabled: bool):
+        """设置坐标调试模式"""
+        self.debug_coordinate_offset = enabled
+        logger.info(f"坐标调试模式: {'启用' if enabled else '禁用'}")
+
+    def set_coordinate_offset(self, offset_x: float, offset_y: float):
+        """设置坐标偏移调整"""
+        self.coordinate_offset_x = offset_x
+        self.coordinate_offset_y = offset_y
+        logger.info(f"设置坐标偏移: X={offset_x}, Y={offset_y}")
+
+    def set_coordinate_scale_adjust(self, scale_adjust: float):
+        """设置缩放比例调整因子"""
+        self.coordinate_scale_adjust = scale_adjust
+        logger.info(f"设置缩放调整因子: {scale_adjust}")
+
+    def reset_coordinate_adjustments(self):
+        """重置所有坐标调整参数"""
+        self.coordinate_offset_x = 0.0
+        self.coordinate_offset_y = 0.0
+        self.coordinate_scale_adjust = 1.0
+        logger.info("重置所有坐标调整参数")
+
+    def get_coordinate_debug_info(self) -> dict:
+        """获取坐标调试信息"""
+        return {
+            'debug_mode': self.debug_coordinate_offset,
+            'offset_x': self.coordinate_offset_x,
+            'offset_y': self.coordinate_offset_y,
+            'scale_adjust': self.coordinate_scale_adjust
+        }
+
+    def _apply_coordinate_adjustments(self, x: float, y: float, scale: float) -> tuple:
+        """应用坐标调整参数"""
+        if not self.debug_coordinate_offset:
+            return x * scale, y * scale
+
+        # 应用缩放调整
+        adjusted_scale = scale * self.coordinate_scale_adjust
+
+        # 应用偏移调整
+        adjusted_x = x * adjusted_scale + self.coordinate_offset_x
+        adjusted_y = y * adjusted_scale + self.coordinate_offset_y
+
+        return adjusted_x, adjusted_y
+
+    def refresh_panoramic_display(self):
+        """刷新全景图显示，重新绘制所有元素"""
+        try:
+            logger.info("刷新全景图显示...")
+
+            # 重新加载全景图
+            self._load_panoramic_image()
+
+            # 重新绘制当前孔位指示框
+            self._draw_current_hole_indicator()
+
+            logger.info("全景图显示刷新完成")
+
+        except Exception as e:
+            logger.error(f"刷新全景图显示失败: {str(e)}")
+
+    # ==================== 日志控制方法 ====================
+
+    def toggle_debug_logging(self):
+        """切换调试日志开关"""
+        try:
+            if is_debug_logging_enabled():
+                disable_debug_logging()
+                self.update_status("调试日志已关闭")
+            else:
+                enable_debug_logging()
+                self.update_status("调试日志已开启")
+        except Exception as e:
+            logger.error(f"切换调试日志失败: {str(e)}")
+            self.update_status(f"切换调试日志失败: {str(e)}")
+
+    def enable_debug_logging(self):
+        """启用调试日志"""
+        try:
+            enable_debug_logging()
+            self.update_status("调试日志已开启")
+        except Exception as e:
+            logger.error(f"启用调试日志失败: {str(e)}")
+            self.update_status(f"启用调试日志失败: {str(e)}")
+
+    def disable_debug_logging(self):
+        """禁用调试日志"""
+        try:
+            disable_debug_logging()
+            self.update_status("调试日志已关闭")
+        except Exception as e:
+            logger.error(f"禁用调试日志失败: {str(e)}")
+            self.update_status(f"禁用调试日志失败: {str(e)}")
+
+    def is_debug_enabled(self) -> bool:
+        """检查调试日志是否启用"""
+        return is_debug_logging_enabled()

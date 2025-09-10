@@ -19,22 +19,25 @@ LOG_LEVELS = {
 
 class AnnotationLogger:
     """标注工具日志管理器"""
-    
-    def __init__(self, name: str = "annotation_tool", level: str = "DEBUG"):
+
+    def __init__(self, name: str = "annotation_tool", level: str = "INFO"):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(LOG_LEVELS.get(level, logging.INFO))
-        
+
+        # 调试模式开关 - 默认关闭
+        self.debug_enabled = False
+
         # 避免重复添加处理器
         if not self.logger.handlers:
             self._setup_handlers()
     
     def _setup_handlers(self):
         """设置日志处理器"""
-        # 控制台处理器 - 只显示错误，保持控制台极简
+        # 控制台处理器 - 根据调试开关决定级别
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.ERROR)
+        console_handler.setLevel(logging.DEBUG if self.debug_enabled else logging.ERROR)
 
-        # 文件处理器 - 保留所有调试信息用于调试
+        # 文件处理器 - 始终保留所有调试信息用于调试
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
 
@@ -57,6 +60,10 @@ class AnnotationLogger:
 
         self.logger.addHandler(console_handler)
         self.logger.addHandler(file_handler)
+
+        # 保存处理器引用以便动态调整
+        self.console_handler = console_handler
+        self.file_handler = file_handler
     
     def debug(self, msg: str, category: str = ""):
         """调试日志"""
@@ -88,6 +95,24 @@ class AnnotationLogger:
             msg = f"[{category}] {msg}"
         self.logger.critical(msg)
 
+    def enable_debug(self):
+        """启用调试日志"""
+        self.debug_enabled = True
+        if hasattr(self, 'console_handler'):
+            self.console_handler.setLevel(logging.DEBUG)
+        self.logger.info("调试日志已启用")
+
+    def disable_debug(self):
+        """禁用调试日志"""
+        self.debug_enabled = False
+        if hasattr(self, 'console_handler'):
+            self.console_handler.setLevel(logging.ERROR)
+        self.logger.info("调试日志已禁用")
+
+    def is_debug_enabled(self) -> bool:
+        """检查调试日志是否启用"""
+        return self.debug_enabled
+
 # 全局日志实例
 logger = AnnotationLogger()
 
@@ -106,3 +131,23 @@ def log_error(msg: str, category: str = ""):
 
 def log_critical(msg: str, category: str = ""):
     logger.critical(msg, category)
+
+# 调试控制函数
+def enable_debug_logging():
+    """启用调试日志"""
+    logger.enable_debug()
+
+def disable_debug_logging():
+    """禁用调试日志"""
+    logger.disable_debug()
+
+def is_debug_logging_enabled() -> bool:
+    """检查调试日志是否启用"""
+    return logger.is_debug_enabled()
+
+def toggle_debug_logging():
+    """切换调试日志开关"""
+    if logger.is_debug_enabled():
+        logger.disable_debug()
+    else:
+        logger.enable_debug()
