@@ -73,11 +73,24 @@ class HoleManager:
         self.start_y = 50
         
         # 动态配置参数 - 用于实时调整
+        # 原始全尺寸坐标（基于3088×2064图像）
+        self.original_first_hole_x = 750  # 第一个孔位的X坐标（全尺寸）
+        self.original_first_hole_y = 392  # 第一个孔位的Y坐标（全尺寸）
+        self.original_horizontal_spacing = 145  # 水平间距（全尺寸）
+        self.original_vertical_spacing = 145  # 垂直间距（全尺寸）
+        self.original_hole_diameter = 90  # 孔位外框直径（全尺寸）
+
+        # 当前使用的坐标（会根据缩放比例调整）
         self.first_hole_x = 750  # 第一个孔位的X坐标
         self.first_hole_y = 392  # 第一个孔位的Y坐标
         self.horizontal_spacing = 145  # 水平间距
         self.vertical_spacing = 145  # 垂直间距
         self.hole_diameter = 90  # 孔位外框直径
+
+        # 缩放相关参数
+        self.current_scale = 1.0  # 当前缩放比例
+        self.original_image_size = (3088, 2064)  # 原始图像尺寸
+        self.last_canvas_size = None  # 上次使用的画布尺寸
         
         # 起始孔位设置 - 默认从25号孔开始标注
         self.start_hole_number = 25
@@ -87,8 +100,8 @@ class HoleManager:
         self._current_panoramic_id: Optional[str] = None
         self._adopted_suggestions: Dict[int, bool] = {}  # hole_number -> is_adopted
         
-    def update_positioning_params(self, first_hole_x=None, first_hole_y=None, 
-                                horizontal_spacing=None, vertical_spacing=None, 
+    def update_positioning_params(self, first_hole_x=None, first_hole_y=None,
+                                horizontal_spacing=None, vertical_spacing=None,
                                 hole_diameter=None, start_hole=None):
         """更新孔位定位参数"""
         if first_hole_x is not None:
@@ -105,12 +118,72 @@ class HoleManager:
             self.hole_height = hole_diameter
         if start_hole is not None:
             self.start_hole_number = start_hole
-        
+
         # 更新相关参数
         self.hole_spacing_x = self.horizontal_spacing
         self.hole_spacing_y = self.vertical_spacing
         self.start_x = self.first_hole_x - self.hole_diameter // 2
         self.start_y = self.first_hole_y - self.hole_diameter // 2
+
+    def adjust_coordinates_for_canvas(self, canvas_width: int, canvas_height: int,
+                                    img_width: int, img_height: int):
+        """
+        根据画布尺寸调整坐标参数
+        将原始全尺寸坐标转换为适合当前画布的坐标
+
+        Args:
+            canvas_width: 画布宽度
+            canvas_height: 画布高度
+            img_width: 图像宽度
+            img_height: 图像高度
+        """
+        # 检查是否是重复调用（画布尺寸相同）
+        current_canvas_size = (canvas_width, canvas_height)
+        if self.last_canvas_size == current_canvas_size:
+            log_debug(f"画布尺寸未变化，跳过坐标调整: {current_canvas_size}", "COORDINATE_ADJUST")
+            return
+
+        # 计算缩放比例（始终使用原始图像尺寸）
+        scale_x = canvas_width / self.original_image_size[0]
+        scale_y = canvas_height / self.original_image_size[1]
+        scale = min(scale_x, scale_y)
+
+        # 如果缩放比例没有变化，不需要调整
+        if abs(self.current_scale - scale) < 0.001:
+            log_debug(f"缩放比例未变化，跳过坐标调整: {scale:.3f}", "COORDINATE_ADJUST")
+            return
+
+        log_debug(f"调整坐标参数: 画布({canvas_width}x{canvas_height}) 原始图像({self.original_image_size[0]}x{self.original_image_size[1]})", "COORDINATE_ADJUST")
+        log_debug(f"当前图像尺寸: ({img_width}x{img_height})", "COORDINATE_ADJUST")
+        log_debug(f"缩放比例: {scale:.3f} (之前: {self.current_scale:.3f})", "COORDINATE_ADJUST")
+
+        # 保存当前状态
+        self.current_scale = scale
+        self.last_canvas_size = current_canvas_size
+
+        # 根据缩放比例调整坐标参数（使用原始坐标）
+        self.first_hole_x = int(self.original_first_hole_x * scale)
+        self.first_hole_y = int(self.original_first_hole_y * scale)
+        self.horizontal_spacing = int(self.original_horizontal_spacing * scale)
+        self.vertical_spacing = int(self.original_vertical_spacing * scale)
+        self.hole_diameter = int(self.original_hole_diameter * scale)
+
+        # 确保最小值
+        self.hole_diameter = max(self.hole_diameter, 10)  # 最小直径10像素
+        self.horizontal_spacing = max(self.horizontal_spacing, 20)  # 最小间距20像素
+        self.vertical_spacing = max(self.vertical_spacing, 20)  # 最小间距20像素
+
+        # 更新相关参数
+        self.hole_width = self.hole_diameter
+        self.hole_height = self.hole_diameter
+        self.hole_spacing_x = self.horizontal_spacing
+        self.hole_spacing_y = self.vertical_spacing
+        self.start_x = self.first_hole_x - self.hole_diameter // 2
+        self.start_y = self.first_hole_y - self.hole_diameter // 2
+
+        log_debug(f"调整后坐标: first_hole=({self.first_hole_x},{self.first_hole_y})", "COORDINATE_ADJUST")
+        log_debug(f"调整后间距: horizontal={self.horizontal_spacing}, vertical={self.vertical_spacing}", "COORDINATE_ADJUST")
+        log_debug(f"调整后直径: {self.hole_diameter}", "COORDINATE_ADJUST")
     
     def set_layout_params(self, panoramic_width: int, panoramic_height: int, 
                          margin_x: int = 50, margin_y: int = 50):

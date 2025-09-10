@@ -98,6 +98,108 @@ class ViewMode(Enum):
     MODEL = "模型"
 
 
+class ProgressDialog:
+    """模态进度对话框"""
+
+    def __init__(self, parent, title="正在加载", message="请稍候..."):
+        self.parent = parent
+        self.title = title
+        self.message = message
+
+        # 进度变量（必须在create_widgets之前初始化）
+        self.progress_var = tk.DoubleVar()
+
+        # 创建对话框窗口
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(title)
+        self.dialog.geometry("400x150")
+        self.dialog.resizable(False, False)
+
+        # 创建界面组件（在居中之前创建，以便获取准确尺寸）
+        self.create_widgets()
+        
+        # 居中显示
+        self.center_window()
+
+        # 设置为模态窗口
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # 强制显示并刷新
+        self.dialog.update_idletasks()
+        self.dialog.update()
+
+    def center_window(self):
+        """居中显示窗口"""
+        # 先更新窗口以获取准确尺寸
+        self.dialog.update_idletasks()
+        
+        # 获取窗口尺寸
+        window_width = self.dialog.winfo_reqwidth()
+        window_height = self.dialog.winfo_reqheight()
+        
+        # 如果窗口尺寸过小，使用默认值
+        if window_width < 400:
+            window_width = 400
+        if window_height < 150:
+            window_height = 150
+        
+        # 获取屏幕尺寸
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        
+        # 计算居中位置
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # 确保窗口不会超出屏幕边界
+        x = max(0, x)
+        y = max(0, y)
+        
+        # 设置窗口位置和大小
+        self.dialog.geometry(f'{window_width}x{window_height}+{x}+{y}')
+
+    def create_widgets(self):
+        """创建界面组件"""
+        # 主框架
+        main_frame = ttk.Frame(self.dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 消息标签
+        self.message_label = ttk.Label(main_frame, text=self.message, font=('TkDefaultFont', 10))
+        self.message_label.pack(pady=(0, 15))
+
+        # 进度条
+        self.progress_bar = ttk.Progressbar(
+            main_frame,
+            variable=self.progress_var,
+            maximum=100,
+            mode='determinate',
+            length=300
+        )
+        self.progress_bar.pack(pady=(0, 10))
+
+        # 进度文本
+        self.progress_text_label = ttk.Label(main_frame, text="0%", font=('TkDefaultFont', 9))
+        self.progress_text_label.pack()
+
+    def update_progress(self, value, message=None):
+        """更新进度"""
+        self.progress_var.set(value)
+        if message:
+            self.message_label.config(text=message)
+        self.progress_text_label.config(text=f"{int(value)}%")
+        self.dialog.update_idletasks()
+        self.dialog.update()  # 强制刷新界面
+
+    def close(self):
+        """关闭对话框"""
+        if self.dialog:
+            self.dialog.grab_release()
+            self.dialog.destroy()
+            self.dialog = None
+
+
 class PanoramicAnnotationGUI:
     """
     全景图像标注工具主界面
@@ -142,6 +244,9 @@ class PanoramicAnnotationGUI:
         self.auto_save_enabled = tk.BooleanVar(value=True)
         self.last_annotation_time = {}  # 记录每个孔位的最后标注时间
         self.current_annotation_modified = False  # 当前标注是否已修改
+
+        # 调试日志控制
+        self.debug_logging_enabled = tk.BooleanVar(value=False)
         
         # 目录路径
         self.panoramic_directory = ""
@@ -177,7 +282,10 @@ class PanoramicAnnotationGUI:
         # 创建界面
         self.create_widgets()
         self.setup_bindings()
-        
+
+        # 同步调试日志状态
+        self.sync_debug_logging_state()
+
         # 状态栏
         self.update_status("就绪 - 请选择全景图目录")
     
@@ -241,7 +349,12 @@ class PanoramicAnnotationGUI:
                   command=self.export_training_data).pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Button(toolbar, text="批量导入",
-                  command=self.batch_import_annotations).pack(side=tk.LEFT, padx=(0, 10))
+                   command=self.batch_import_annotations).pack(side=tk.LEFT, padx=(0, 10))
+
+        # 调试日志开关
+        ttk.Checkbutton(toolbar, text="调试日志",
+                       variable=self.debug_logging_enabled,
+                       command=self.toggle_debug_logging).pack(side=tk.LEFT, padx=(0, 5))
     
     def create_panoramic_panel(self, parent):
         """创建全景图显示面板"""
@@ -270,40 +383,46 @@ class PanoramicAnnotationGUI:
         right_frame = ttk.Frame(parent, width=360)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
         right_frame.pack_propagate(False)  # 固定宽度
-        
+
         # 统计 - 移到第一个位置
         self.create_stats_panel(right_frame)
-        
+
         # 导航控制 - 移到切片前面，符合操作流程：导航→查看→标注
         self.create_navigation_panel(right_frame)
-        
+
         # 切片显示区域 - 设置合理的显示尺寸
         slice_frame = ttk.LabelFrame(right_frame, text="当前切片")
         slice_frame.pack(fill=tk.X, padx=(0, 0), pady=(0, 5))
-        
+
         # 设置优化的切片显示尺寸，适应新的窗口布局
         self.slice_canvas = tk.Canvas(slice_frame, bg='white', width=150, height=150)
         self.slice_canvas.pack(padx=5, pady=3)
-        
+
         # 切片信息和标注预览合并区域 - 紧凑布局
         info_frame = ttk.Frame(slice_frame)
         info_frame.pack(fill=tk.X, padx=5, pady=(0, 3))
-        
-        # 切片信息标签
-        self.slice_info_label = ttk.Label(info_frame, text="未加载切片", 
-                                         font=('TkDefaultFont', 8))
+
+        # 切片信息标签 - 添加debug日志跟踪字体大小
+        slice_info_font = ('TkDefaultFont', 8)
+        self.slice_info_label = ttk.Label(info_frame, text="未加载切片",
+                                          font=slice_info_font)
         self.slice_info_label.pack(fill=tk.X, pady=(0, 2))
-        
-        # 标注预览区域
-        self.annotation_preview_label = ttk.Label(info_frame, text="标注状态: 未标注", 
-                                                font=('TkDefaultFont', 8, 'bold'))
+        log_debug(f"创建切片信息标签 - 字体: {slice_info_font}, 位置: info_frame", "UI_FONT")
+
+        # 标注预览区域 - 添加debug日志跟踪字体大小
+        annotation_preview_font = ('TkDefaultFont', 8, 'bold')
+        self.annotation_preview_label = ttk.Label(info_frame, text="标注状态: 未标注",
+                                                font=annotation_preview_font)
         self.annotation_preview_label.pack(fill=tk.X, pady=(0, 2))
-        
-        # 详细标注信息预览区域
-        self.detailed_annotation_label = ttk.Label(info_frame, text="", 
-                                                  font=('TkDefaultFont', 8))
+        log_debug(f"创建标注预览标签 - 字体: {annotation_preview_font}, 位置: info_frame", "UI_FONT")
+
+        # 详细标注信息预览区域 - 添加debug日志跟踪字体大小
+        detailed_annotation_font = ('TkDefaultFont', 8)
+        self.detailed_annotation_label = ttk.Label(info_frame, text="",
+                                                  font=detailed_annotation_font)
         self.detailed_annotation_label.pack(fill=tk.X, pady=(0, 2))
-        
+        log_debug(f"创建详细标注标签 - 字体: {detailed_annotation_font}, 位置: info_frame", "UI_FONT")
+
         # 标注控制 - 现在是最后一个区域，可以动态扩展
         self.create_annotation_panel(right_frame)
     
@@ -1080,13 +1199,83 @@ class PanoramicAnnotationGUI:
             messagebox.showerror("错误", "请先选择全景图目录")
             return False
 
+        progress_dialog = None
+
         try:
+            # 立即显示进度条以提供即时反馈
+            log_debug("开始数据加载流程", "LOAD_DATA")
+            progress_dialog = ProgressDialog(self.root, "正在加载全景图数据", "正在扫描目录...")
+            progress_dialog.update_progress(0, "开始扫描文件...")
+            log_debug("进度对话框已创建", "LOAD_DATA")
+            
+            # 预扫描：更精确的文件计数 - 只统计图像文件
+            from pathlib import Path
+            directory_path = Path(self.panoramic_directory)
+            
+            progress_dialog.update_progress(5, "正在统计图像文件...")
+            
+            # 只统计实际的图像文件
+            image_extensions = {'.bmp', '.png', '.jpg', '.jpeg', '.tiff', '.tif'}
+            image_files = []
+            subdirs = []
+            
+            progress_dialog.update_progress(10, "正在扫描主目录...")
+            
+            for item in directory_path.iterdir():
+                if item.is_file() and item.suffix.lower() in image_extensions:
+                    image_files.append(item)
+                elif item.is_dir():
+                    subdirs.append(item)
+                    # 统计子目录中的图像文件
+                    for sub_item in item.iterdir():
+                        if sub_item.is_file() and sub_item.suffix.lower() in image_extensions:
+                            image_files.append(sub_item)
+            
+            progress_dialog.update_progress(20, "文件统计完成...")
+            
+            total_files = len(image_files)
+            log_debug(f"检测到 {total_files} 个图像文件", "LOAD_DATA")
+            
+            # 决定是否继续显示进度条
+            show_progress = total_files > 5  # 进一步降低阈值到5个文件
+            log_debug(f"继续显示进度条: {show_progress} (文件数: {total_files})", "LOAD_DATA")
+
+            if not show_progress:
+                # 如果文件不多，关闭进度条
+                progress_dialog.close()
+                progress_dialog = None
+                log_debug("文件数量较少，关闭进度条", "LOAD_DATA")
+
+            # 进度回调函数
+            def progress_callback(current, total, message):
+                if progress_dialog:
+                    try:
+                        # 计算百分比 (20-90%区间用于文件处理)
+                        percentage = 20 + (current / max(total, 1)) * 70
+                        progress_dialog.update_progress(percentage, message)
+                        
+                        # 强制刷新界面
+                        self.root.update_idletasks()
+                        
+                        log_debug(f"进度更新: {current}/{total} ({percentage:.1f}%) - {message}", "PROGRESS")
+                    except Exception as e:
+                        log_error(f"进度更新失败: {e}", "PROGRESS")
+
             # 使用子目录模式：直接使用全景目录下的子目录
+            log_debug("开始调用 get_slice_files_from_directory", "LOAD_DATA")
+            
+            # 确保进度回调被正确传递
+            if progress_dialog:
+                progress_callback(0, total_files, "开始处理切片文件...")
+            
             self.slice_files = self.image_service.get_slice_files_from_directory(
-                self.panoramic_directory, self.panoramic_directory)
+                self.panoramic_directory, self.panoramic_directory, progress_callback)
+            
             structure_msg = '子目录模式'
 
             if not self.slice_files:
+                if progress_dialog:
+                    progress_dialog.close()
                 messagebox.showerror("错误",
                     "未找到有效的切片文件。\n请检查：\n" +
                     "1. 目录下是否存在全景图文件（.bmp, .png, .jpg等）\n" +
@@ -1094,10 +1283,13 @@ class PanoramicAnnotationGUI:
                     "3. 切片文件应在 <全景文件>/hole_<孔序号>.png 位置")
                 return False
 
+            # 更新进度 - 数据加载完成
+            if progress_dialog:
+                progress_callback(total_files, total_files, "数据加载完成，正在初始化界面...")
+
             # 更新全景图列表
             self.update_panoramic_list()
 
-            # 重置状态
             # 重置状态
             self.current_dataset = PanoramicDataset("新数据集",
                 f"从 {self.panoramic_directory} 加载的数据集 ({structure_msg})")
@@ -1105,11 +1297,22 @@ class PanoramicAnnotationGUI:
             # 找到第一个有效孔位的索引（从起始孔位开始）
             self.current_slice_index = self.find_first_valid_slice_index()
 
+            # 最后的界面初始化
+            if progress_dialog:
+                progress_dialog.update_progress(95, "正在加载切片...")
+
             # 加载第一个有效切片
             self.load_current_slice()
 
             # 自动切换视图模式
             self.auto_switch_view_mode()
+
+            # 完成进度
+            if progress_dialog:
+                progress_dialog.update_progress(100, "加载完成")
+                # 延迟关闭进度窗口，让用户看到完成状态
+                self.root.after(500, lambda: progress_dialog.close() if progress_dialog else None)
+                log_debug("进度条显示完成，延迟关闭", "LOAD_DATA")
 
             self.update_status(f"已加载 {len(self.slice_files)} 个切片文件 ({structure_msg})")
             self.update_progress()
@@ -1118,6 +1321,12 @@ class PanoramicAnnotationGUI:
             return True
 
         except Exception as e:
+            # 确保进度窗口被关闭
+            if progress_dialog:
+                try:
+                    progress_dialog.close()
+                except:
+                    pass
             log_error(f"数据加载失败: {str(e)}", "LOAD_DATA")
             messagebox.showerror("错误", f"加载数据失败: {str(e)}")
             return False
@@ -2619,8 +2828,8 @@ class PanoramicAnnotationGUI:
                     # 组合详细信息
                     detail_str = " - " + "，".join(details_parts) if details_parts else ""
 
-                    # 保留关键的用户提示信息
-                    log_info(f"保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}{detail_str}", "SAVE")
+                    # 保留关键的用户提示信息（改为DEBUG级别，避免控制台输出过多）
+                    log_debug(f"保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}{detail_str}", "SAVE")
 
                 except Exception as e:
                     # 如果获取详细信息失败，记录错误并使用简化版本
@@ -2872,26 +3081,33 @@ class PanoramicAnnotationGUI:
             self.annotation_preview_label.config(text="标注状态: 未标注")
             self.detailed_annotation_label.config(text="")
             return
-            
+
         current_file = self.slice_files[self.current_slice_index]
         hole_label = self.hole_manager.get_hole_label(self.current_hole_number)
         annotation_status = self.get_annotation_status_text()
-        
+
         # 更新切片信息标签 - 只显示文件和孔位信息
-        self.slice_info_label.config(text=f"{current_file['filename']} - {hole_label}({self.current_hole_number})")
-        
+        slice_info_text = f"{current_file['filename']} - {hole_label}({self.current_hole_number})"
+        self.slice_info_label.config(text=slice_info_text)
+
         # 更新标注预览标签
-        self.annotation_preview_label.config(text=f"标注状态: {annotation_status}")
-        
+        annotation_preview_text = f"标注状态: {annotation_status}"
+        self.annotation_preview_label.config(text=annotation_preview_text)
+
         # 更新详细标注信息
         detailed_info = self.get_detailed_annotation_info()
         self.detailed_annotation_label.config(text=detailed_info)
-        
+
+        # 添加debug日志跟踪字体大小和定位信息
+        log_debug(f"更新切片信息显示 - 切片标签: '{slice_info_text}' (字体: TkDefaultFont 8)", "UI_UPDATE")
+        log_debug(f"更新标注预览显示 - 预览标签: '{annotation_preview_text}' (字体: TkDefaultFont 8 bold)", "UI_UPDATE")
+        log_debug(f"更新详细标注显示 - 详细标签: '{detailed_info}' (字体: TkDefaultFont 8)", "UI_UPDATE")
+
         # Only log significant info changes to reduce spam
         if not hasattr(self, '_last_info_display') or self._last_info_display != annotation_status:
             log_debug(f"更新切片信息显示: {annotation_status}", "INFO")
             self._last_info_display = annotation_status
-        
+
         # 刷新显示
         self.root.update_idletasks()
     
@@ -3150,6 +3366,46 @@ class PanoramicAnnotationGUI:
         """更新状态栏"""
         self.status_label.config(text=message)
         self.root.update_idletasks()
+
+    def toggle_debug_logging(self):
+        """切换调试日志开关"""
+        try:
+            from src.utils.logger import toggle_debug_logging, is_debug_logging_enabled
+
+            # 切换调试日志状态
+            toggle_debug_logging()
+
+            # 更新复选框状态以反映实际状态
+            current_state = is_debug_logging_enabled()
+            self.debug_logging_enabled.set(current_state)
+
+            # 更新状态栏显示
+            status_text = "调试日志已开启" if current_state else "调试日志已关闭"
+            self.update_status(status_text)
+
+            # 记录操作日志
+            log_info(f"调试日志开关已切换: {'开启' if current_state else '关闭'}", "DEBUG_TOGGLE")
+
+        except Exception as e:
+            log_error(f"切换调试日志失败: {str(e)}", "DEBUG_TOGGLE")
+            self.update_status(f"切换调试日志失败: {str(e)}")
+
+    def sync_debug_logging_state(self):
+        """同步调试日志状态到UI"""
+        try:
+            from src.utils.logger import is_debug_logging_enabled
+
+            # 获取当前调试日志状态
+            current_state = is_debug_logging_enabled()
+
+            # 同步到复选框
+            self.debug_logging_enabled.set(current_state)
+
+            # 记录同步状态
+            log_debug(f"调试日志状态已同步: {'开启' if current_state else '关闭'}", "DEBUG_SYNC")
+
+        except Exception as e:
+            log_error(f"同步调试日志状态失败: {str(e)}", "DEBUG_SYNC")
     
     def save_annotations(self):
         """保存标注结果 - 只保存增强标注数据"""

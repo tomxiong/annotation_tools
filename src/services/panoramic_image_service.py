@@ -136,9 +136,9 @@ class PanoramicImageService:
         
         # 尝试加载字体
         try:
-            font = ImageFont.truetype("arial.ttf", 12)
+            font = ImageFont.truetype("arial.ttf", 18)
         except:
-            font = ImageFont.load_default()
+            font = ImageFont.load_default(18)
         
         # 颜色定义
         colors = {
@@ -278,37 +278,54 @@ class PanoramicImageService:
         
         return Image.fromarray(enhanced)
     
-    def get_slice_files_from_directory(self, directory: str, panoramic_directory: str = None) -> List[Dict[str, Any]]:
+    def get_slice_files_from_directory(self, directory: str, panoramic_directory: str = None,
+                                     progress_callback=None) -> List[Dict[str, Any]]:
         """
         从目录中获取所有切片文件信息
         支持两种目录结构：
         1. 独立路径：<全景文件>_hole_<孔序号>.png
         2. 子目录结构：<全景文件>\hole_<孔序号>.png
+
+        Args:
+            directory: 切片文件目录
+            panoramic_directory: 全景图目录
+            progress_callback: 进度回调函数 (current, total, message)
         """
         slice_files = []
         directory_path = Path(directory)
-        
+
         if not directory_path.exists():
             return slice_files
-        
+
         # 检测目录结构类型
+        if progress_callback:
+            progress_callback(0, 100, "检测目录结构...")
         structure_type = self._detect_directory_structure(directory_path, panoramic_directory)
-        
+
         if structure_type == "independent":
             # 独立路径模式
-            slice_files = self._get_slice_files_independent(directory_path)
+            slice_files = self._get_slice_files_independent(directory_path, progress_callback)
         elif structure_type == "subdirectory":
             # 子目录模式
-            slice_files = self._get_slice_files_subdirectory(directory_path, panoramic_directory)
+            slice_files = self._get_slice_files_subdirectory(directory_path, panoramic_directory, progress_callback)
         else:
             # 尝试两种模式
-            slice_files = self._get_slice_files_independent(directory_path)
+            if progress_callback:
+                progress_callback(10, 100, "尝试独立路径模式...")
+            slice_files = self._get_slice_files_independent(directory_path, progress_callback)
             if not slice_files and panoramic_directory:
-                slice_files = self._get_slice_files_subdirectory(Path(panoramic_directory), panoramic_directory)
-        
+                if progress_callback:
+                    progress_callback(50, 100, "尝试子目录模式...")
+                slice_files = self._get_slice_files_subdirectory(Path(panoramic_directory), panoramic_directory, progress_callback)
+
         # 按全景图ID和孔位编号排序
+        if progress_callback:
+            progress_callback(90, 100, "排序文件列表...")
         slice_files.sort(key=lambda x: (x['panoramic_id'], x['hole_number']))
-        
+
+        if progress_callback:
+            progress_callback(100, 100, "加载完成")
+
         return slice_files
     
     def _detect_directory_structure(self, slice_dir: Path, panoramic_dir: str = None) -> str:
@@ -341,23 +358,32 @@ class PanoramicImageService:
         
         return "unknown"
     
-    def _get_slice_files_independent(self, directory_path: Path) -> List[Dict[str, Any]]:
+    def _get_slice_files_independent(self, directory_path: Path, progress_callback=None) -> List[Dict[str, Any]]:
         """
         获取独立路径模式的切片文件
         """
         slice_files = []
-        
+
+        # 首先收集所有文件路径
+        all_files = list(directory_path.rglob('*'))
+        total_files = len(all_files)
+
+        if progress_callback:
+            progress_callback(0, 100, f"扫描目录文件... (共{total_files}个文件)")
+
+        processed_count = 0
+
         # 遍历目录中的所有文件
-        for file_path in directory_path.rglob('*'):
+        for file_path in all_files:
             if file_path.is_file() and file_path.suffix.lower() in self.supported_formats:
                 filename = file_path.name
-                
+
                 # 检查是否是切片文件格式
                 if self._is_slice_filename(filename):
                     try:
                         # 解析文件名信息
                         panoramic_id, hole_number = self._parse_slice_filename(filename)
-                        
+
                         slice_info = {
                             'filename': filename,
                             'filepath': str(file_path),
@@ -367,13 +393,24 @@ class PanoramicImageService:
                             'structure_type': 'independent'
                         }
                         slice_files.append(slice_info)
-                        
+
                     except Exception as e:
                         log_error(f"解析切片文件名失败 {filename}: {e}", "IMAGE_SERVICE")
-        
+
+            processed_count += 1
+
+            # 更新进度
+            if progress_callback and total_files > 0:
+                progress = int((processed_count / total_files) * 80)  # 80%用于文件扫描
+                progress_callback(progress, 100, f"扫描文件 {processed_count}/{total_files}...")
+
+        if progress_callback:
+            progress_callback(80, 100, f"找到 {len(slice_files)} 个切片文件")
+
         return slice_files
     
-    def _get_slice_files_subdirectory(self, panoramic_path: Path, panoramic_directory: str) -> List[Dict[str, Any]]:
+    def _get_slice_files_subdirectory(self, panoramic_path: Path, panoramic_directory: str,
+                                    progress_callback=None) -> List[Dict[str, Any]]:
         """
         获取子目录模式的切片文件
         支持两种子目录结构：
@@ -381,23 +418,34 @@ class PanoramicImageService:
         2. 全景文件名子目录：切片文件在 <全景目录>/<全景文件名>/hole_<孔序号>.png
         """
         slice_files = []
-        
+
+        # 获取所有子目录
+        subdirs = list(panoramic_path.iterdir())
+        total_subdirs = len([d for d in subdirs if d.is_dir()])
+
+        if progress_callback:
+            progress_callback(0, 100, f"扫描子目录... (共{total_subdirs}个目录)")
+
+        processed_dirs = 0
+
         # 遍历全景图目录中的子目录
-        for subdir in panoramic_path.iterdir():
+        for subdir in subdirs:
             if subdir.is_dir():
                 panoramic_id = subdir.name
-                
+
                 # 在子目录中查找hole_*.png文件
                 hole_files_found = False
-                for file_path in subdir.rglob('hole_*.png'):
+                hole_files = list(subdir.rglob('hole_*.png'))
+
+                for file_path in hole_files:
                     if file_path.is_file():
                         filename = file_path.name
                         hole_files_found = True
-                        
+
                         # 解析孔位编号
                         try:
                             hole_number = self._parse_hole_number_from_filename(filename)
-                            
+
                             slice_info = {
                                 'filename': filename,
                                 'filepath': str(file_path),
@@ -407,10 +455,10 @@ class PanoramicImageService:
                                 'structure_type': 'subdirectory'
                             }
                             slice_files.append(slice_info)
-                            
+
                         except Exception as e:
                             log_error(f"解析子目录切片文件失败 {filename}: {e}", "IMAGE_SERVICE")
-                
+
                 # 如果子目录中没有找到hole_*.png文件，尝试查找全景图文件
                 if not hole_files_found:
                     # 尝试在全景目录中查找对应的全景图文件
@@ -420,20 +468,21 @@ class PanoramicImageService:
                         if potential_file.exists():
                             panoramic_file = potential_file
                             break
-                    
+
                     # 如果找到全景图文件，则假设切片在全景文件名对应的子目录中
                     if panoramic_file:
                         # 检查是否存在以全景ID命名的子目录
                         panoramic_subdir = panoramic_path / panoramic_id
                         if panoramic_subdir.exists() and panoramic_subdir.is_dir():
-                            for file_path in panoramic_subdir.rglob('hole_*.png'):
+                            hole_files = list(panoramic_subdir.rglob('hole_*.png'))
+                            for file_path in hole_files:
                                 if file_path.is_file():
                                     filename = file_path.name
-                                    
+
                                     # 解析孔位编号
                                     try:
                                         hole_number = self._parse_hole_number_from_filename(filename)
-                                        
+
                                         slice_info = {
                                             'filename': filename,
                                             'filepath': str(file_path),
@@ -443,10 +492,20 @@ class PanoramicImageService:
                                             'structure_type': 'subdirectory'
                                         }
                                         slice_files.append(slice_info)
-                                        
+
                                     except Exception as e:
                                         log_error(f"解析全景文件名子目录切片文件失败 {filename}: {e}", "IMAGE_SERVICE")
-        
+
+                processed_dirs += 1
+
+                # 更新进度
+                if progress_callback and total_subdirs > 0:
+                    progress = int((processed_dirs / total_subdirs) * 70) + 10  # 10-80%用于目录扫描
+                    progress_callback(progress, 100, f"扫描目录 {processed_dirs}/{total_subdirs}...")
+
+        if progress_callback:
+            progress_callback(80, 100, f"找到 {len(slice_files)} 个切片文件")
+
         return slice_files
     
     def _parse_hole_number_from_filename(self, filename: str) -> int:
