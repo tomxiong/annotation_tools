@@ -1,12 +1,12 @@
 {
   "window_title": "全景标注工具",
   "window_size": [
-    1400,
-    800
+    1565,
+    921
   ],
   "window_position": [
-    689,
-    297
+    498,
+    145
   ],
   "is_maximized": false,
   "view_mode": "single_image",

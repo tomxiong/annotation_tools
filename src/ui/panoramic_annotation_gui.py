@@ -1420,6 +1420,9 @@ class PanoramicAnnotationGUI:
                     x = canvas_width // 2
                     y = canvas_height // 2
                     self.slice_canvas.create_image(x, y, image=self.slice_photo)
+                    
+                    # 添加标注状态指示
+                    self.draw_slice_annotation_indicator(canvas_width, canvas_height)
             
             # 加载对应的全景图（强制每次都加载以确保刷新）
             self.log_debug(f"load_current_slice: 强制调用load_panoramic_image (panoramic_changed={panoramic_changed})")
@@ -1775,6 +1778,54 @@ class PanoramicAnnotationGUI:
                 'interference_factors': []
             }
     
+    def draw_slice_annotation_indicator(self, canvas_width, canvas_height):
+        """在切片预览画布上绘制标注状态指示器"""
+        if not hasattr(self, 'current_panoramic_id') or not hasattr(self, 'current_hole_number'):
+            return
+            
+        try:
+            # 检查当前孔位是否已人工标注
+            is_manual_confirmed = False
+            manual_annotation = self.current_dataset.get_annotation_by_hole(
+                self.current_panoramic_id, self.current_hole_number
+            )
+            if manual_annotation and hasattr(manual_annotation, 'annotation_source'):
+                is_manual_confirmed = manual_annotation.annotation_source in ['enhanced_manual', 'manual']
+            
+            # 如果已标注，在右上角绘制亮黄色标记
+            if is_manual_confirmed:
+                # 计算标记位置和尺寸
+                indicator_size = 20  # 标记尺寸
+                margin = 5  # 距离边缘的间距
+                
+                # 右上角位置
+                x = canvas_width - margin - indicator_size // 2
+                y = margin + indicator_size // 2
+                
+                # 绘制圆形标记
+                self.slice_canvas.create_oval(
+                    x - indicator_size // 2, y - indicator_size // 2,
+                    x + indicator_size // 2, y + indicator_size // 2,
+                    fill='#FFFF00',  # 亮黄色
+                    outline='black',  # 黑色边框
+                    width=2,
+                    tags="annotation_indicator"
+                )
+                
+                # 在圆形中央添加"✓"符号
+                self.slice_canvas.create_text(
+                    x, y,
+                    text="✓",
+                    font=('Arial', 10, 'bold'),
+                    fill='black',
+                    tags="annotation_indicator"
+                )
+                
+                log_debug(f"已在切片预览添加标注状态指示器", "DISPLAY")
+                
+        except Exception as e:
+            log_debug(f"绘制切片标注指示器失败: {e}", "DISPLAY")
+
     def draw_current_hole_indicator(self):
         """更新当前孔位的外框颜色状态"""
         log_debug(f"draw_current_hole_indicator 调用 - panoramic_image: {self.panoramic_image is not None}, current_hole_number: {getattr(self, 'current_hole_number', 'N/A')}", "DISPLAY")
@@ -1828,26 +1879,26 @@ class PanoramicAnnotationGUI:
                 log_debug("没有配置数据可绘制", "DISPLAY")
                 return
 
-            # 定义不同生长级别的颜色
+            # 定义新的颜色方案 - 更符合逻辑的医学检测颜色
             color_map = {
-                'positive': '#00AA00',    # 深绿色
-                'negative': '#CC0000',    # 深红色
-                'weak_growth': '#CCCC00',  # 深黄色
-                'uncertain': '#CC8800',    # 深橙色
-                'default': '#888888'      # 深灰色（默认/未设置）
+                'positive': '#CC0000',        # 阳性：深红色（危险/需关注）
+                'negative': '#00AA00',        # 阴性：深绿色（安全/正常）
+                'weak_growth': '#FF8C00',     # 弱生长：深橙色（警告/中等风险）
+                'uncertain': '#9932CC',       # 不确定：深紫色（需进一步确认）
+                'default': '#708090'          # 默认：石板灰（未分类/中性）
             }
 
-            # 当前孔位的特殊高亮颜色（更亮）
+            # 当前孔位的特殊高亮颜色（更亮的版本）
             current_color_map = {
-                'positive': '#00FF00',    # 亮绿色
-                'negative': '#FF0000',    # 亮红色
-                'weak_growth': '#FFFF00',  # 亮黄色
-                'uncertain': '#FFA500',    # 亮橙色
-                'default': '#FFFFFF'      # 白色（当前选中）
+                'positive': '#FF0000',        # 阳性当前：亮红色
+                'negative': '#00FF00',        # 阴性当前：亮绿色
+                'weak_growth': '#FFA500',     # 弱生长当前：亮橙色
+                'uncertain': '#DA70D6',       # 不确定当前：亮紫色
+                'default': '#C0C0C0'          # 默认当前：银色
             }
 
-            # 人工确认状态的视觉标记颜色
-            manual_confirm_color = '#FF1493'  # 深粉色用于人工确认标记
+            # 人工确认状态的视觉标记颜色 - 使用亮黄色
+            manual_confirm_color = '#FFFF00'      # 亮黄色 - 醒目但不过于刺眼
 
             # 绘制每个有配置的孔位
             drawn_count = 0
@@ -1876,13 +1927,22 @@ class PanoramicAnnotationGUI:
                     if manual_annotation and hasattr(manual_annotation, 'annotation_source'):
                         is_manual_confirmed = manual_annotation.annotation_source in ['enhanced_manual', 'manual']
 
+                    # 如果已人工确认，显示人工标注的颜色而非配置文件的颜色
+                    if is_manual_confirmed:
+                        # 使用人工标注的生长级别，而不是配置文件的
+                        display_growth_level = manual_annotation.growth_level
+                        log_debug(f"孔位{hole_number}使用人工标注颜色: {display_growth_level}", "DISPLAY")
+                    else:
+                        # 使用配置文件的生长级别
+                        display_growth_level = growth_level
+
                     # 选择颜色和线宽
                     if is_current:
-                        color = current_color_map.get(growth_level, current_color_map['default'])
+                        color = current_color_map.get(display_growth_level, current_color_map['default'])
                         width = 3  # 当前孔位用较粗的线框
                         tags = "config_hole_boxes_current"
                     else:
-                        color = color_map.get(growth_level, color_map['default'])
+                        color = color_map.get(display_growth_level, color_map['default'])
                         width = 1  # 其他孔位用普通线宽
                         tags = "config_hole_boxes"
 
@@ -1893,21 +1953,24 @@ class PanoramicAnnotationGUI:
                         outline=color, width=width, tags=tags
                     )
 
-                    # 如果已人工确认，绘制人工确认标记（右上角小三角）
+                    # 如果已人工确认，绘制醒目的亮黄色三角标记
                     if is_manual_confirmed:
-                        # 计算三角形顶点坐标
-                        triangle_size = max(6, int(15 * scale_factor))
+                        # 计算更大的三角形标记 - 增大尺寸提高可见性
+                        triangle_size = max(12, int(25 * scale_factor))  # 保持较大尺寸
+                        
+                        # 右上角三角形标记点
                         triangle_points = [
-                            hole_x + box_size//2, hole_y - box_size//2,  # 右上角
-                            hole_x + box_size//2 - triangle_size, hole_y - box_size//2,  # 左上
-                            hole_x + box_size//2, hole_y - box_size//2 + triangle_size   # 右下
+                            hole_x + box_size//2, hole_y - box_size//2,  # 右上角顶点
+                            hole_x + box_size//2 - triangle_size, hole_y - box_size//2,  # 左上点
+                            hole_x + box_size//2, hole_y - box_size//2 + triangle_size   # 右下点
                         ]
 
-                        # 绘制人工确认标记
+                        # 绘制简洁的亮黄色人工确认标记
                         self.panoramic_canvas.create_polygon(
                             triangle_points,
                             fill=manual_confirm_color,
-                            outline=manual_confirm_color,
+                            outline='black',  # 黑色边框增强对比
+                            width=1,
                             tags="manual_annotation_markers"
                         )
 
@@ -2506,7 +2569,12 @@ class PanoramicAnnotationGUI:
                     self.set_view_mode(original_view_mode)
 
         except Exception as e:
-            messagebox.showerror("错误", f"保存标注失败: {str(e)}")
+            import traceback
+            error_msg = f"保存标注失败: {str(e)}"
+            # 记录详细错误信息到日志
+            log_error(f"{error_msg}\n{traceback.format_exc()}")
+            # 同时显示简化的用户友好错误消息
+            messagebox.showerror("错误", error_msg)
     
     def skip_current(self):
         """跳过当前切片"""
@@ -2523,6 +2591,11 @@ class PanoramicAnnotationGUI:
             self.current_dataset.annotations.remove(existing_ann)
             self.update_statistics()
             self.update_status("已清除当前标注")
+            
+            # 更新切片预览区域的标注指示器
+            canvas_width = self.slice_canvas.winfo_width() or 150
+            canvas_height = self.slice_canvas.winfo_height() or 150
+            self.draw_slice_annotation_indicator(canvas_width, canvas_height)
         
         # 重置界面状态
         self.current_growth_level.set("negative")
@@ -2770,6 +2843,12 @@ class PanoramicAnnotationGUI:
             # 更新显示（不重新加载全景图，因为图像没有改变）
             self.update_statistics()
             self.update_slice_info_display()
+            
+            # 更新切片预览区域的标注指示器
+            canvas_width = self.slice_canvas.winfo_width() or 150
+            canvas_height = self.slice_canvas.winfo_height() or 150
+            self.draw_slice_annotation_indicator(canvas_width, canvas_height)
+            
             self.root.update_idletasks()
             self.root.update()
             
@@ -2842,7 +2921,12 @@ class PanoramicAnnotationGUI:
             return True
             
         except Exception as e:
-            raise Exception(f"保存标注失败: {str(e)}")
+            import traceback
+            error_msg = f"保存标注失败: {str(e)}"
+            # 记录详细错误信息到日志
+            log_error(f"{error_msg}\n{traceback.format_exc()}")
+            # 重新抛出异常，让上层处理
+            raise Exception(error_msg)
     
     def go_to_hole(self, event=None):
         """跳转到指定孔位"""
@@ -3637,7 +3721,12 @@ class PanoramicAnnotationGUI:
             self.window_resize_log.append(log_entry)
             
         except Exception as e:
-            messagebox.showerror("错误", f"加载标注文件失败: {str(e)}")
+            import traceback
+            error_msg = f"加载标注文件失败: {str(e)}"
+            # 记录详细错误信息到日志
+            log_error(f"{error_msg}\n{traceback.format_exc()}")
+            # 同时显示简化的用户友好错误消息
+            messagebox.showerror("错误", error_msg)
     
     def _verify_timestamp_sync_after_load(self):
         """验证时间戳同步状态 - 确保加载后显示正确的时间戳"""
