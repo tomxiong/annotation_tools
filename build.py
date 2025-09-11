@@ -28,6 +28,7 @@ def main():
         "--windowed",
         "--onefile",
         "--clean",
+        "--noconfirm",  # Don't ask for confirmation
         "--add-data=src;src",
         # Add all required tkinter imports
         "--hidden-import=tkinter",
@@ -50,18 +51,26 @@ def main():
         "--exclude-module=scipy",
         "--exclude-module=pandas",
         "--exclude-module=pytest",
-        "--exclude-module=test_*.py",
+        "--exclude-module=test",
+        # Suppress warnings
+        "--log-level=WARN",
         "run_gui.py"
     ]
     
     try:
         print("Running PyInstaller...")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # Fix encoding issue by specifying encoding and error handling
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, 
+                              encoding='utf-8', errors='ignore')
         print("GUI executable built successfully!")
         print(f"Location: {project_root / 'dist' / 'PanoramicAnnotationTool.exe'}")
     except subprocess.CalledProcessError as e:
         print(f"Build failed: {e}")
-        print(f"Error output: {e.stderr}")
+        # Handle encoding issues in error output
+        error_msg = e.stderr if e.stderr else "Unknown error"
+        if isinstance(error_msg, bytes):
+            error_msg = error_msg.decode('utf-8', errors='ignore')
+        print(f"Error output: {error_msg}")
         return False
     
     # CLI version build removed as requested - only GUI version is needed

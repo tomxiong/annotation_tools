@@ -26,6 +26,13 @@ except ImportError:
     import os
     from pathlib import Path
 
+# 版本管理导入
+try:
+    from src.utils.version import get_version_display
+except ImportError:
+    def get_version_display():
+        return "v1.0.0"
+
     # 配置日志系统
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
@@ -211,6 +218,7 @@ class PanoramicAnnotationGUI:
     
     def __init__(self, root: tk.Tk):
         self.root = root
+        # 设置窗口标题（移除版本信息，保持简洁）
         self.root.title("全景图像标注工具")
         # 设置优化的窗口大小，调整为1600x900
         self.root.geometry("1600x900")   # 目标尺寸1600x900
@@ -1088,8 +1096,24 @@ class PanoramicAnnotationGUI:
         status_frame = ttk.Frame(parent)
         status_frame.pack(fill=tk.X, pady=(5, 0))
         
+        # 主状态标签（左侧，可扩展）
         self.status_label = ttk.Label(status_frame, text="就绪", relief=tk.SUNKEN)
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # 版本信息标签（右侧，固定宽度）
+        version_display = get_version_display()
+        self.version_label = ttk.Label(status_frame, text=f"版本: {version_display}", 
+                                      relief=tk.SUNKEN, width=15)
+        self.version_label.pack(side=tk.RIGHT, padx=(5, 0))
+    
+    def update_version_display(self):
+        """更新版本信息显示"""
+        try:
+            version_display = get_version_display()
+            if hasattr(self, 'version_label') and self.version_label:
+                self.version_label.config(text=f"版本: {version_display}")
+        except Exception as e:
+            log_debug(f"更新版本显示时出错: {e}", "VERSION")
     
     def setup_bindings(self):
         """设置键盘快捷键和窗口事件"""
@@ -1116,6 +1140,9 @@ class PanoramicAnnotationGUI:
         
         # 窗口分析快捷键
         self.root.bind('<Control-l>', lambda e: self.analyze_window_resize_log())  # Ctrl+L 分析日志
+        
+        # 版本信息快捷键
+        self.root.bind('<F1>', lambda e: self.show_about_dialog())  # F1 显示操作指南
         
         # 其他快捷键
         self.root.bind('<space>', self.on_key_space)
@@ -5961,6 +5988,167 @@ class PanoramicAnnotationGUI:
 
         except Exception as e:
             log_error(f"自动切换视图模式失败: {str(e)}", "AUTO_VIEW")
+
+    def show_about_dialog(self):
+        """显示操作指南对话框"""
+        try:
+            from src.utils.version import get_version_display
+            
+            # 创建关于对话框窗口
+            about_window = tk.Toplevel(self.root)
+            about_window.title("操作指南")
+            about_window.geometry("650x550")
+            about_window.resizable(True, True)
+            about_window.transient(self.root)
+            about_window.grab_set()
+            
+            # 创建滚动框架
+            canvas = tk.Canvas(about_window)
+            scrollbar = tk.Scrollbar(about_window, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas)
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # 标题
+            title_label = tk.Label(scrollable_frame, 
+                                  text="全景图像标注工具 - 操作指南", 
+                                  font=("Arial", 14, "bold"),
+                                  fg="#2E86AB")
+            title_label.pack(pady=(10, 20))
+            
+            # 版本信息（简化显示）
+            version_info = get_version_display()
+            version_label = tk.Label(scrollable_frame,
+                                    text=f"版本: {version_info}",
+                                    font=("Arial", 10),
+                                    fg="#666666")
+            version_label.pack(pady=(0, 15))
+            
+            # 操作指南内容
+            guide_text = """【基本操作流程】
+
+1. 浏览并加载图像
+   • 点击"浏览"按钮选择全景图像文件
+   • 支持BMP格式的全景图像
+   • 选择后自动加载并显示在预览区域
+
+2. 加载标注配置
+   • 点击"加载标注"按钮选择对应的配置文件(.cfg)
+   • 配置文件包含标注的坐标和类型信息
+   • 加载后标注会显示在图像上
+
+3. 导入模型建议
+   • 使用"导入模型建议"功能加载AI模型的标注建议
+   • 可以基于模型建议进行人工确认和调整
+   • 提高标注效率和准确性
+
+4. 标注操作
+   • 在图像上拖拽创建标注框
+   • 右键点击标注框可删除或修改类型
+   • 支持多种微生物类型的标注
+
+5. 保存并下一个
+   • 点击"保存并下一个"保存当前标注
+   • 自动复制上一个同生长级别的标注设置
+   • 提高批量标注的连续性
+
+【标注颜色标准】
+
+• 红色框: 目标微生物（主要标注对象）
+• 绿色框: 参考微生物
+• 蓝色框: 疑似目标
+• 黄色框: 其他类型
+• 橙色框: 需要确认的标注
+
+【显示方法】
+
+• 缩放: 使用鼠标滚轮或缩放按钮
+• 平移: 按住鼠标左键拖拽图像
+• 全景浏览: 点击导航窗口快速定位
+
+【已标注显示】
+
+• 已完成标注的图像会在文件列表中标记
+• 绿色表示已完成，红色表示有错误
+• 点击可重新打开进行修改
+
+【统计功能】
+
+• 实时显示当前图像的标注数量
+• 按类型统计标注分布
+• 提供整体进度统计
+
+【开始孔位】
+
+• 设置批量标注的起始位置
+• 支持从指定孔位开始标注
+• 便于大批量数据的分段处理
+
+【快捷键】
+
+• F1: 显示此帮助信息
+• Ctrl+S: 快速保存
+• Ctrl+N: 下一个图像
+• Delete: 删除选中的标注框
+• 方向键: 孔位导航
+• 1/2/3: 设置生长级别
+• 空格: 保存并下一个"""
+            
+            # 创建文本框显示指南内容
+            text_widget = tk.Text(scrollable_frame, 
+                                 wrap=tk.WORD, 
+                                 width=70, 
+                                 height=25,
+                                 font=("Arial", 10),
+                                 bg="#f8f9fa",
+                                 relief=tk.FLAT,
+                                 padx=15,
+                                 pady=10)
+            text_widget.insert(tk.END, guide_text)
+            text_widget.config(state=tk.DISABLED)  # 只读
+            text_widget.pack(padx=20, pady=10)
+            
+            # 关闭按钮
+            close_button = tk.Button(scrollable_frame, 
+                                   text="关闭", 
+                                   command=about_window.destroy,
+                                   bg="#2E86AB",
+                                   fg="white",
+                                   font=("Arial", 10, "bold"),
+                                   padx=20,
+                                   pady=5)
+            close_button.pack(pady=20)
+            
+            # 配置滚动
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # 绑定鼠标滚轮事件
+            def _on_mousewheel(event):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            about_window.bind("<MouseWheel>", _on_mousewheel)
+            
+            # 居中显示窗口
+            about_window.update_idletasks()
+            x = (about_window.winfo_screenwidth() // 2) - (about_window.winfo_width() // 2)
+            y = (about_window.winfo_screenheight() // 2) - (about_window.winfo_height() // 2)
+            about_window.geometry(f"+{x}+{y}")
+            
+        except Exception as e:
+            log_error(f"显示操作指南对话框时出错: {e}")
+            # 显示简化的版本信息
+            from src.utils.version import get_version_display
+            simple_text = f"""全景图像标注工具
+版本: {get_version_display()}
+
+操作指南功能暂时不可用，请查看相关文档。"""
+            messagebox.showinfo("操作指南", simple_text)
 
 
 def main():
