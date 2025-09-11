@@ -141,11 +141,12 @@ class ProgressDialog:
         self.dialog.update()
 
     def center_window(self):
-        """居中显示窗口"""
+        """居中显示窗口 - 相对于父窗口居中"""
         # 先更新窗口以获取准确尺寸
         self.dialog.update_idletasks()
+        self.parent.update_idletasks()  # 确保父窗口信息准确
         
-        # 获取窗口尺寸
+        # 获取对话框窗口尺寸
         window_width = self.dialog.winfo_reqwidth()
         window_height = self.dialog.winfo_reqheight()
         
@@ -155,17 +156,23 @@ class ProgressDialog:
         if window_height < 150:
             window_height = 150
         
-        # 获取屏幕尺寸
+        # 获取父窗口的位置和尺寸
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        
+        # 计算相对于父窗口的居中位置
+        x = parent_x + (parent_width - window_width) // 2
+        y = parent_y + (parent_height - window_height) // 2
+        
+        # 获取屏幕尺寸，确保窗口不会超出屏幕边界
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
         
-        # 计算居中位置
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-        
-        # 确保窗口不会超出屏幕边界
-        x = max(0, x)
-        y = max(0, y)
+        # 调整位置，确保完全在屏幕内
+        x = max(0, min(x, screen_width - window_width))
+        y = max(0, min(y, screen_height - window_height))
         
         # 设置窗口位置和大小
         self.dialog.geometry(f'{window_width}x{window_height}+{x}+{y}')
@@ -6134,10 +6141,32 @@ class PanoramicAnnotationGUI:
                 canvas.yview_scroll(int(-1*(event.delta/120)), "units")
             about_window.bind("<MouseWheel>", _on_mousewheel)
             
-            # 居中显示窗口
+            # 居中显示窗口 - 相对于父窗口居中
             about_window.update_idletasks()
-            x = (about_window.winfo_screenwidth() // 2) - (about_window.winfo_width() // 2)
-            y = (about_window.winfo_screenheight() // 2) - (about_window.winfo_height() // 2)
+            self.root.update_idletasks()  # 确保父窗口信息准确
+            
+            # 获取窗口尺寸
+            window_width = about_window.winfo_width()
+            window_height = about_window.winfo_height()
+            
+            # 获取父窗口的位置和尺寸
+            parent_x = self.root.winfo_x()
+            parent_y = self.root.winfo_y()
+            parent_width = self.root.winfo_width()
+            parent_height = self.root.winfo_height()
+            
+            # 计算相对于父窗口的居中位置
+            x = parent_x + (parent_width - window_width) // 2
+            y = parent_y + (parent_height - window_height) // 2
+            
+            # 获取屏幕尺寸，确保窗口不会超出屏幕边界
+            screen_width = about_window.winfo_screenwidth()
+            screen_height = about_window.winfo_screenheight()
+            
+            # 调整位置，确保完全在屏幕内
+            x = max(0, min(x, screen_width - window_width))
+            y = max(0, min(y, screen_height - window_height))
+            
             about_window.geometry(f"+{x}+{y}")
             
         except Exception as e:

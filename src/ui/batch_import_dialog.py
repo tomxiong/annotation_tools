@@ -35,12 +35,32 @@ class BatchImportDialog:
         self.dialog.protocol("WM_DELETE_WINDOW", self.on_cancel)
     
     def center_window(self):
-        """窗口居中显示"""
+        """窗口居中显示 - 相对于父窗口居中"""
         self.dialog.update_idletasks()
+        self.parent.update_idletasks()  # 确保父窗口信息准确
+        
+        # 获取对话框窗口尺寸
         width = self.dialog.winfo_width()
         height = self.dialog.winfo_height()
-        x = (self.dialog.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (height // 2)
+        
+        # 获取父窗口的位置和尺寸
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        
+        # 计算相对于父窗口的居中位置
+        x = parent_x + (parent_width - width) // 2
+        y = parent_y + (parent_height - height) // 2
+        
+        # 获取屏幕尺寸，确保窗口不会超出屏幕边界
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        
+        # 调整位置，确保完全在屏幕内
+        x = max(0, min(x, screen_width - width))
+        y = max(0, min(y, screen_height - height))
+        
         self.dialog.geometry(f"{width}x{height}+{x}+{y}")
     
     def create_widgets(self):

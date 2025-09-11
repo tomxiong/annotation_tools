@@ -263,11 +263,35 @@ class ComponentMixin:
             # 某些widget不支持state属性
             pass
     
-    def center_window(self, window: tk.Toplevel):
-        """居中窗口"""
+    def center_window(self, window: tk.Toplevel, parent: tk.Tk = None):
+        """居中窗口 - 相对于父窗口居中"""
         window.update_idletasks()
+        
+        # 获取窗口尺寸
         width = window.winfo_width()
         height = window.winfo_height()
-        x = (window.winfo_screenwidth() // 2) - (width // 2)
-        y = (window.winfo_screenheight() // 2) - (height // 2)
+        
+        if parent:
+            # 相对于父窗口居中
+            parent.update_idletasks()
+            parent_x = parent.winfo_x()
+            parent_y = parent.winfo_y()
+            parent_width = parent.winfo_width()
+            parent_height = parent.winfo_height()
+            
+            x = parent_x + (parent_width - width) // 2
+            y = parent_y + (parent_height - height) // 2
+            
+            # 获取屏幕尺寸，确保窗口不会超出屏幕边界
+            screen_width = window.winfo_screenwidth()
+            screen_height = window.winfo_screenheight()
+            
+            # 调整位置，确保完全在屏幕内
+            x = max(0, min(x, screen_width - width))
+            y = max(0, min(y, screen_height - height))
+        else:
+            # 如果没有父窗口，使用屏幕居中（保持兼容性）
+            x = (window.winfo_screenwidth() // 2) - (width // 2)
+            y = (window.winfo_screenheight() // 2) - (height // 2)
+        
         window.geometry(f'{width}x{height}+{x}+{y}')
