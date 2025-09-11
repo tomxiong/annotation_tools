@@ -1435,6 +1435,20 @@ class PanoramicAnnotationGUI:
             # 更新全景图列表
             self.update_panoramic_list()
 
+            # 根据第一个全景图的类型设置起始孔位
+            if self.slice_files and len(self.slice_files) > 0:
+                first_panoramic_id = self.slice_files[0]['panoramic_id']
+                if first_panoramic_id.upper().startswith('SE'):
+                    # SE类型全景图：前4个孔位为空，从第5个孔开始
+                    if hasattr(self, 'hole_manager') and self.hole_manager:
+                        self.hole_manager.update_positioning_params(start_hole=5)
+                        log_debug(f"初始全景图 {first_panoramic_id} 为SE类型，设置起始孔位为5", "LOAD_DATA")
+                else:
+                    # 普通全景图：从第1个孔开始
+                    if hasattr(self, 'hole_manager') and self.hole_manager:
+                        self.hole_manager.update_positioning_params(start_hole=1)
+                        log_debug(f"初始全景图 {first_panoramic_id} 为普通类型，设置起始孔位为1", "LOAD_DATA")
+
             # 重置状态
             self.current_dataset = PanoramicDataset("新数据集",
                 f"从 {self.panoramic_directory} 加载的数据集 ({structure_msg})")
@@ -1802,6 +1816,19 @@ class PanoramicAnnotationGUI:
             self.current_panoramic_id = current_file['panoramic_id']
             self.current_hole_number = current_file['hole_number']
             self.hole_number_var.set(str(self.current_hole_number))
+
+            # 如果全景图改变，根据类型设置起始孔位
+            if panoramic_changed:
+                if self.current_panoramic_id.upper().startswith('SE'):
+                    # SE类型全景图：前4个孔位为空，从第5个孔开始
+                    if hasattr(self, 'hole_manager') and self.hole_manager:
+                        self.hole_manager.update_positioning_params(start_hole=5)
+                        self.log_debug(f"SE类型全景图，设置起始孔位为5", "LOAD")
+                else:
+                    # 普通全景图：恢复默认起始孔位
+                    if hasattr(self, 'hole_manager') and self.hole_manager:
+                        self.hole_manager.update_positioning_params(start_hole=1)
+                        self.log_debug(f"普通类型全景图，设置起始孔位为1", "LOAD")
 
             # 更新hole_manager的panoramic_id，确保模型建议正确显示
             if hasattr(self, 'hole_manager') and self.hole_manager:
@@ -5720,6 +5747,18 @@ class PanoramicAnnotationGUI:
         # 保存当前标注
         self.save_current_annotation_internal("navigation")
 
+        # 根据全景图类型设置起始孔位（SE类型从5号孔开始，普通类型从默认值开始）
+        if panoramic_id.upper().startswith('SE'):
+            # SE类型全景图：前4个孔位为空，从第5个孔开始
+            if hasattr(self, 'hole_manager') and self.hole_manager:
+                self.hole_manager.update_positioning_params(start_hole=5)
+                log_debug(f"SE类型全景图，设置起始孔位为5", "NAVIGATION")
+        else:
+            # 普通全景图：恢复默认起始孔位
+            if hasattr(self, 'hole_manager') and self.hole_manager:
+                self.hole_manager.update_positioning_params(start_hole=1)
+                log_debug(f"普通类型全景图，设置起始孔位为1", "NAVIGATION")
+
         # 查找目标全景图的第一个孔位
         # 查找目标全景图的第一个有效孔位（从起始孔位开始）
         target_slice_index = None
@@ -5749,7 +5788,7 @@ class PanoramicAnnotationGUI:
             self.update_progress()
             self.update_statistics()
 
-            self.update_status(f"已切换到全景图: {panoramic_id}")
+            self.update_status(f"已切换到全景图: {panoramic_id}，起始孔位: {start_hole}")
         else:
             messagebox.showerror("错误", f"未找到全景图 {panoramic_id} 的切片文件")
     
@@ -5761,6 +5800,18 @@ class PanoramicAnnotationGUI:
 
         # 保存当前标注
         self.save_current_annotation_internal("navigation")
+
+        # 根据全景图类型设置起始孔位（SE类型从5号孔开始，普通类型从默认值开始）
+        if panoramic_id.upper().startswith('SE'):
+            # SE类型全景图：前4个孔位为空，从第5个孔开始
+            if hasattr(self, 'hole_manager') and self.hole_manager:
+                self.hole_manager.update_positioning_params(start_hole=5)
+                log_debug(f"SE类型全景图，设置起始孔位为5", "SWITCH")
+        else:
+            # 普通全景图：恢复默认起始孔位
+            if hasattr(self, 'hole_manager') and self.hole_manager:
+                self.hole_manager.update_positioning_params(start_hole=1)
+                log_debug(f"普通类型全景图，设置起始孔位为1", "SWITCH")
 
         # 查找目标全景图的第一个孔位
         target_slice_index = None
@@ -5791,7 +5842,7 @@ class PanoramicAnnotationGUI:
             self.update_statistics()
 
             # 保留关键的用户提示信息
-            log_info(f"已切换到全景图: {panoramic_id}", "SWITCH")
+            log_info(f"已切换到全景图: {panoramic_id}，起始孔位: {start_hole}", "SWITCH")
             return True
         else:
             log_debug(f"未找到全景图 {panoramic_id} 的切片文件", "SWITCH")

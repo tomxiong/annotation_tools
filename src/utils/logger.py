@@ -47,22 +47,22 @@ LOG_CATEGORIES = {
 class AnnotationLogger:
     """标注工具日志管理器"""
 
-    def __init__(self, name: str = "annotation_tool", level: str = "WARNING"):
+    def __init__(self, name: str = "annotation_tool", level: str = "DEBUG"):
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(LOG_LEVELS.get(level, logging.WARNING))  # 默认设为WARNING级别
+        self.logger.setLevel(LOG_LEVELS.get(level, logging.DEBUG))  # 默认设为DEBUG级别
 
         # 运行时日志级别控制 - 默认关闭调试和信息输出
         self.runtime_console_level = logging.WARNING  # 控制台默认只显示WARNING及以上
-        self.runtime_file_level = logging.INFO        # 文件记录INFO及以上
+        self.runtime_file_level = logging.DEBUG       # 文件记录DEBUG及以上（便于调试）
         
-        # 调试模式开关 - 默认关闭
-        self.debug_enabled = False
+        # 调试模式开关 - 默认启用
+        self.debug_enabled = True
         
         # 详细调试模式 - 显示更多细节
-        self.verbose_debug = False
+        self.verbose_debug = True
         
         # 性能模式 - 最小化日志输出
-        self.performance_mode = True  # 默认启用性能模式
+        self.performance_mode = False  # 默认关闭性能模式，启用详细日志
 
         # 避免重复添加处理器
         if not self.logger.handlers:
@@ -73,12 +73,12 @@ class AnnotationLogger:
         # 控制台处理器 - 根据性能模式和调试开关决定级别
         console_handler = logging.StreamHandler(sys.stdout)
         
-        if self.verbose_debug:
+        if self.performance_mode and not (self.debug_enabled or self.verbose_debug):
+            console_handler.setLevel(logging.ERROR)  # 纯性能模式下只显示错误
+        elif self.verbose_debug:
             console_handler.setLevel(logging.DEBUG)
         elif self.debug_enabled:
             console_handler.setLevel(logging.INFO)
-        elif self.performance_mode:
-            console_handler.setLevel(logging.ERROR)  # 性能模式下只显示错误
         else:
             console_handler.setLevel(self.runtime_console_level)
 
@@ -87,7 +87,11 @@ class AnnotationLogger:
         log_dir.mkdir(exist_ok=True)
 
         file_handler = logging.FileHandler(log_dir / "annotation.log", encoding='utf-8')
-        file_handler.setLevel(self.runtime_file_level)
+        # 在调试模式下文件记录DEBUG级别，否则记录INFO级别
+        if self.debug_enabled or self.verbose_debug:
+            file_handler.setLevel(logging.DEBUG)
+        else:
+            file_handler.setLevel(self.runtime_file_level)
 
         # 控制台格式化器 - 根据模式使用不同格式
         if self.verbose_debug:

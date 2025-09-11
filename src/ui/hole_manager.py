@@ -436,7 +436,7 @@ class HoleManager:
     
     def is_hole_available_for_annotation(self, hole_number: int) -> bool:
         """检查孔位是否可用于标注"""
-        return hole_number >= self.start_hole_number
+        return self.start_hole_number <= hole_number <= self.total_holes
     
     def get_hole_label(self, hole_number: int) -> str:
         """
