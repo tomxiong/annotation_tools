@@ -103,11 +103,12 @@ class UIManager:
         ttk.Button(self.toolbar, text="导出训练数据",
                   command=self.controller._export_training_data).pack(side=tk.LEFT, padx=(0, 10))
 
-        # 调试日志开关按钮
-        self.debug_button = ttk.Button(self.toolbar, text="调试日志: 开",
-                                      command=self._toggle_debug_logging)
-        self.debug_button.pack(side=tk.LEFT, padx=(0, 10))
-        self._update_debug_button_text()
+        # 调试日志开关按钮 - 已隐藏以简化界面
+        # 如需启用，取消以下注释：
+        # self.debug_button = ttk.Button(self.toolbar, text="调试日志: 开",
+        #                               command=self._toggle_debug_logging)
+        # self.debug_button.pack(side=tk.LEFT, padx=(0, 10))
+        # self._update_debug_button_text()
 
     def _create_panoramic_panel(self, parent):
         """创建全景图显示面板"""

@@ -16,6 +16,9 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(src_dir))
 
 try:
+    # 首先初始化日志配置
+    from src.config.logging_config import init_default_logging
+    
     # 导入直接的GUI模块
     from src.ui.panoramic_annotation_gui import main as gui_main
 
@@ -28,6 +31,8 @@ except ImportError as e:
 def main():
     """主函数"""
     try:
+        # 初始化生产环境日志配置（最小化控制台输出）
+        init_default_logging()
         print("正在启动全景标注工具GUI...")
         print("使用直接模块启动方式")
 

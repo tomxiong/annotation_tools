@@ -15,7 +15,11 @@ from enum import Enum
 
 # 日志导入
 try:
-    from src.utils.logger import log_debug, log_info, log_warning, log_error
+    from src.utils.logger import (
+        log_debug, log_info, log_warning, log_error,
+        log_strategy, log_perf, log_nav, log_ann,
+        log_debug_detail, log_ui_detail, log_timing
+    )
 except ImportError:
     # 如果日志模块不可用，使用文件日志作为后备
     import logging
@@ -207,7 +211,7 @@ class PanoramicAnnotationGUI:
     
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("全景图像标注工具 - 微生物药敏检测")
+        self.root.title("全景图像标注工具")
         # 设置优化的窗口大小，调整为1600x900
         self.root.geometry("1600x900")   # 目标尺寸1600x900
         self.root.minsize(1400, 800)     # 保持最小尺寸
@@ -251,31 +255,53 @@ class PanoramicAnnotationGUI:
         self.skip_button = None  # 跳过按钮引用
         self.clear_button = None  # 清除按钮引用
 
-        # 高性能延迟配置 - 基于代码优化后的实际性能数据
+        # 高性能延迟配置 - 基于持续优化数据精细调整（2025-09-10 17:00）
+        # 优化效果持续稳定，设置应用3.8ms平均，95%耗时9.0ms，进一步降低延迟
         self.delay_config = {
-            'settings_apply': 50,       # 设置应用延迟 (ms) - 优化后从250ms降至50ms
-            'button_recovery': 150,     # 按钮恢复延迟 (ms) - 适当减少以提高响应速度
-            'quick_recovery': 100,      # 快速操作恢复 (ms) - 优化后减少
-            'ui_refresh': 30,           # UI刷新延迟 (ms) - 轻微优化
-            'verification': 80          # 验证延迟 (ms) - 轻微优化
+            'settings_apply': 30,       # 从50ms精细调整至30ms，基于9.0ms的95%耗时+安全边距
+            'button_recovery': 150,     # 按钮恢复延迟保持不变
+            'quick_recovery': 100,      # 快速操作恢复保持不变
+            'ui_refresh': 50,           # UI刷新延迟保持不变
+            'verification': 100         # 验证延迟保持不变
         }
         
-        # 性能监控数据收集 - 不自动调整，仅收集数据
+        # 性能监控数据收集 - 详细分析复制设置性能
         self.performance_stats = {
             'settings_apply_times': [],     # 设置应用耗时记录
             'ui_load_times': [],           # UI加载耗时记录
             'button_response_times': [],   # 按钮响应时间记录
+            
+            # 详细的复制设置步骤计时
+            'copy_settings_detailed': {
+                'button_disable_times': [],     # 按钮禁用耗时
+                'settings_collect_times': [],   # 设置收集耗时
+                'navigation_times': [],         # 导航跳转耗时
+                'ui_refresh_times': [],         # UI刷新耗时
+                'settings_apply_times': [],     # 设置应用耗时
+                'button_enable_times': [],      # 按钮启用耗时
+                'total_copy_times': []          # 总耗时
+            },
+            
+            # 按钮状态变化计时
+            'button_state_changes': {
+                'disable_start_times': [],      # 按钮开始禁用时间
+                'disable_complete_times': [],   # 按钮禁用完成时间
+                'enable_start_times': [],       # 按钮开始启用时间
+                'enable_complete_times': []     # 按钮启用完成时间
+            },
+            
             'operation_counts': {          # 操作计数
                 'save_and_next': 0,
                 'skip': 0,
                 'clear': 0,
                 'settings_copy_success': 0,
-                'settings_copy_fail': 0
+                'settings_copy_fail': 0,
+                'detailed_timing_collected': 0  # 详细计时收集次数
             }
         }
         
         # === 性能监控功能配置 ===
-        # 性能数据收集开关 - 默认关闭，需要时可手动启用
+        # 性能数据收集开关 - 已启用用于分析复制设置性能
         # 如需重新启用性能监控功能：
         # 1. 将下行的 value=False 改为 value=True
         # 2. 取消注释工具栏中的性能监控相关按钮（搜索"性能监控相关功能已隐藏"）
@@ -324,6 +350,35 @@ class PanoramicAnnotationGUI:
 
         # 状态栏
         self.update_status("就绪 - 请选择全景图目录")
+    
+    @staticmethod
+    def determine_microbe_type_from_filename(panoramic_id: str) -> str:
+        """根据全景图文件名前两位字符判断微生物类型
+        
+        Args:
+            panoramic_id: 全景图ID，如 "FG10000026" 或 "EB10000026"
+            
+        Returns:
+            str: "fungi" 如果前两位是FG，否则返回 "bacteria"
+        """
+        if panoramic_id and len(panoramic_id) >= 2:
+            prefix = panoramic_id[:2].upper()
+            if prefix == "FG":
+                return "fungi"
+        return "bacteria"
+    
+    def get_default_microbe_type(self, panoramic_id: str = None) -> str:
+        """获取默认的微生物类型
+        
+        Args:
+            panoramic_id: 全景图ID，如果提供则根据文件名判断，否则返回默认值
+            
+        Returns:
+            str: 微生物类型，"bacteria" 或 "fungi"
+        """
+        if panoramic_id:
+            return self.determine_microbe_type_from_filename(panoramic_id)
+        return "bacteria"
     
     def create_widgets(self):
         """创建界面组件"""
@@ -392,16 +447,17 @@ class PanoramicAnnotationGUI:
                        variable=self.debug_logging_enabled,
                        command=self.toggle_debug_logging).pack(side=tk.LEFT, padx=(0, 5))
 
-        # === 性能监控相关功能已隐藏，需要时可重新启用 ===
-        # 性能监控开关
+        # === 性能监控相关功能已隐藏，减少界面复杂度 ===
+        # 如需启用，取消以下注释：
+        # # 性能监控开关
         # ttk.Checkbutton(toolbar, text="性能监控",
         #                variable=self.performance_monitoring_enabled).pack(side=tk.LEFT, padx=(0, 5))
 
-        # 性能分析按钮
+        # # 性能分析按钮
         # ttk.Button(toolbar, text="性能分析",
         #           command=self.show_performance_analysis).pack(side=tk.LEFT, padx=(0, 5))
 
-        # 延迟配置按钮
+        # # 延迟配置按钮
         # ttk.Button(toolbar, text="延迟配置",
         #           command=self.show_delay_config_dialog).pack(side=tk.LEFT, padx=(0, 5))
     
@@ -456,21 +512,21 @@ class PanoramicAnnotationGUI:
         self.slice_info_label = ttk.Label(info_frame, text="未加载切片",
                                           font=slice_info_font)
         self.slice_info_label.pack(fill=tk.X, pady=(0, 2))
-        log_debug(f"创建切片信息标签 - 字体: {slice_info_font}, 位置: info_frame", "UI_FONT")
+        log_ui_detail(f"创建切片信息标签 - 字体: {slice_info_font}, 位置: info_frame")
 
         # 标注预览区域 - 添加debug日志跟踪字体大小
         annotation_preview_font = ('TkDefaultFont', 8, 'bold')
         self.annotation_preview_label = ttk.Label(info_frame, text="标注状态: 未标注",
                                                 font=annotation_preview_font)
         self.annotation_preview_label.pack(fill=tk.X, pady=(0, 2))
-        log_debug(f"创建标注预览标签 - 字体: {annotation_preview_font}, 位置: info_frame", "UI_FONT")
+        log_ui_detail(f"创建标注预览标签 - 字体: {annotation_preview_font}, 位置: info_frame")
 
         # 详细标注信息预览区域 - 添加debug日志跟踪字体大小
         detailed_annotation_font = ('TkDefaultFont', 8)
         self.detailed_annotation_label = ttk.Label(info_frame, text="",
                                                   font=detailed_annotation_font)
         self.detailed_annotation_label.pack(fill=tk.X, pady=(0, 2))
-        log_debug(f"创建详细标注标签 - 字体: {detailed_annotation_font}, 位置: info_frame", "UI_FONT")
+        log_ui_detail(f"创建详细标注标签 - 字体: {detailed_annotation_font}, 位置: info_frame")
 
         # 标注控制 - 现在是最后一个区域，可以动态扩展
         self.create_annotation_panel(right_frame)
@@ -1402,6 +1458,261 @@ class PanoramicAnnotationGUI:
         # 如果没找到有效孔位，返回0
         return 0
     
+    def _load_annotations_optimized(self):
+        """优化的标注加载：一次性设置所有属性，避免多次UI更新"""
+        # 首先检查已有标注
+        existing_ann = self.current_dataset.get_annotation_by_hole(
+            self.current_panoramic_id, 
+            self.current_hole_number
+        )
+        
+        log_debug(f"优化标注加载 - 孔位{self.current_hole_number}, 有已有标注: {existing_ann is not None}", "LOAD")
+        
+        if existing_ann:
+            # 有已有标注，直接设置
+            self._apply_existing_annotation(existing_ann)
+            return
+        
+        # 没有已有标注，检查配置文件标注
+        config_annotation = self._get_config_annotation(self.current_panoramic_id, self.current_hole_number)
+        if config_annotation:
+            # 有配置文件标注，设置并导入
+            self._apply_config_annotation(config_annotation)
+            return
+        
+        # 既没有已有标注也没有配置标注，只有在需要重置时才设置默认值
+        # （在panoramic_changed且reset_to_defaults=True时已经设置过了）
+        log_debug("无任何标注，保持当前设置或默认设置", "LOAD")
+
+    def _apply_existing_annotation(self, existing_ann):
+        """应用已有标注，一次性设置所有属性"""
+        try:
+            # 安全地获取属性，提供默认值（根据当前全景图判断微生物类型）
+            default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+            microbe_type = getattr(existing_ann, 'microbe_type', default_microbe_type)
+            growth_level = getattr(existing_ann, 'growth_level', 'negative')
+            
+            log_debug(f"应用已有标注 - 类型:{microbe_type}, 等级:{growth_level}", "LOAD")
+            
+            # 设置界面状态
+            self.current_microbe_type.set(microbe_type)
+            self.current_growth_level.set(growth_level)
+        except Exception as e:
+            log_error(f"设置基本标注属性失败: {e}", "LOAD")
+            # 使用默认值
+            default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+            self.current_microbe_type.set(default_microbe_type)
+            self.current_growth_level.set('negative')
+            return
+        
+        # 同步时间戳到内存（对所有手动标注处理，包括manual和enhanced_manual）
+        if ((hasattr(existing_ann, 'annotation_source') and 
+             existing_ann.annotation_source in ['enhanced_manual', 'manual'])):
+            import datetime
+            annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
+            
+            # 强制优先使用annotation对象中的timestamp
+            if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
+                try:
+                    if isinstance(existing_ann.timestamp, str):
+                        dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
+                    else:
+                        dt = existing_ann.timestamp
+                    self.last_annotation_time[annotation_key] = dt
+                    log_debug(f"强制使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}", "LOAD")
+                except Exception as e:
+                    log_error(f"时间戳解析失败: {e}", "TIMESTAMP")
+                    # 解析失败时生成一个默认时间戳，但不使用可能错误的内存缓存
+                    default_time = datetime.datetime.now()
+                    self.last_annotation_time[annotation_key] = default_time
+                    log_debug(f"生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}", "LOAD")
+            else:
+                # 如果标注对象没有时间戳属性，生成一个默认时间戳
+                default_time = datetime.datetime.now()
+                self.last_annotation_time[annotation_key] = default_time
+                log_debug(f"标注对象无时间戳，生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}", "LOAD")
+                            
+        # 同步到增强标注面板
+        if self.enhanced_annotation_panel:
+            if hasattr(existing_ann, 'enhanced_data') and existing_ann.enhanced_data:
+                try:
+                    from models.enhanced_annotation import FeatureCombination
+                    enhanced_data = existing_ann.enhanced_data
+                    
+                    # 确保enhanced_data是字典格式
+                    if isinstance(enhanced_data, dict):
+                        # 检查是否包含feature_combination数据
+                        if 'feature_combination' in enhanced_data:
+                            combination_data = enhanced_data['feature_combination']
+                            # 创建FeatureCombination对象并应用到面板
+                            combination = FeatureCombination.from_dict(combination_data)
+                            self.enhanced_annotation_panel.set_feature_combination(combination)
+                            log_debug("成功加载增强标注数据到面板", "LOAD")
+                        else:
+                            log_warning("enhanced_data中缺少feature_combination字段", "LOAD")
+                    else:
+                        log_warning(f"enhanced_data不是字典类型: {type(enhanced_data)}", "LOAD")
+                except Exception as e:
+                    log_error(f"加载增强标注数据失败: {e}", "LOAD")
+                    # 如果加载增强数据失败，至少确保基本标注数据可用
+                    if self.enhanced_annotation_panel:
+                        # 安全地获取属性
+                        growth_level = getattr(existing_ann, 'growth_level', 'negative')
+                        microbe_type = getattr(existing_ann, 'microbe_type', 'bacteria')
+                        self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=growth_level,
+                            microbe_type=microbe_type,
+                            reset_interference=False
+                        )
+            else:
+                # 对于没有enhanced_data的标注（如配置文件导入的标注），使用基本数据初始化面板
+                growth_level = getattr(existing_ann, 'growth_level', 'negative')
+                microbe_type = getattr(existing_ann, 'microbe_type', 'bacteria')
+                self.enhanced_annotation_panel.initialize_with_defaults(
+                    growth_level=growth_level,
+                    microbe_type=microbe_type,
+                    reset_interference=False
+                )
+                log_debug(f"使用基本数据初始化增强面板: {microbe_type}, {growth_level}", "LOAD")
+        
+        # 设置干扰因素
+        if hasattr(existing_ann, 'interference_factors') and existing_ann.interference_factors:
+            try:
+                if isinstance(existing_ann.interference_factors, list):
+                    # 重置所有干扰因素
+                    for factor in self.interference_factors:
+                        self.interference_factors[factor].set(False)
+                    # 设置已标注的干扰因素
+                    for factor in existing_ann.interference_factors:
+                        if factor in self.interference_factors:
+                            self.interference_factors[factor].set(True)
+                    log_debug(f"设置干扰因素: {existing_ann.interference_factors}", "LOAD")
+            except Exception as e:
+                log_error(f"设置干扰因素失败: {e}", "LOAD")
+    
+    def _get_config_annotation(self, panoramic_id: str, hole_number: int):
+        """获取配置文件中的标注数据"""
+        if not panoramic_id or not self.panoramic_directory:
+            return None
+        
+        try:
+            # 查找全景图文件
+            panoramic_file = self.image_service.find_panoramic_image(
+                f"{panoramic_id}_hole_1.png", 
+                self.panoramic_directory
+            )
+            
+            if not panoramic_file:
+                return None
+            
+            # 查找对应的配置文件
+            config_file = self.config_service.find_config_file(panoramic_file)
+            if not config_file:
+                return None
+            
+            # 解析配置文件
+            config_annotations = self.config_service.parse_config_file(config_file)
+            if not config_annotations or hole_number not in config_annotations:
+                return None
+            
+            # 解析标注字符串
+            annotation_str = config_annotations[hole_number]
+            parsed_annotation = self._parse_annotation_string(annotation_str, panoramic_id)
+            
+            return {
+                'annotation_str': annotation_str,
+                'parsed': parsed_annotation,
+                'slice_filename': f"{panoramic_id}_hole_{hole_number}.png"
+            }
+        except Exception as e:
+            log_debug(f"获取配置标注时出错: {e}", "LOAD")
+            return None
+    
+    def _apply_config_annotation(self, config_annotation):
+        """应用配置文件标注"""
+        try:
+            parsed = config_annotation['parsed']
+            # 安全地获取属性，提供默认值（从解析结果中获取已确定的微生物类型）
+            microbe_type = parsed.get('microbe_type', self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None)))
+            growth_level = parsed.get('growth_level', 'negative')
+            
+            log_debug(f"应用配置标注 - 类型:{microbe_type}, 等级:{growth_level}", "LOAD")
+            
+            # 设置界面状态
+            self.current_microbe_type.set(microbe_type)
+            self.current_growth_level.set(growth_level)
+        except Exception as e:
+            log_error(f"应用配置标注失败: {e}", "LOAD")
+            # 使用默认值
+            default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+            self.current_microbe_type.set(default_microbe_type)
+            self.current_growth_level.set('negative')
+            return
+        
+        # 设置干扰因素
+        if parsed.get('interference_factors'):
+            # 重置所有干扰因素
+            for factor in self.interference_factors:
+                self.interference_factors[factor].set(False)
+            # 设置解析出的干扰因素
+            for factor in parsed['interference_factors']:
+                if factor in self.interference_factors:
+                    self.interference_factors[factor].set(True)
+        
+        # 导入到数据集（如果还未导入）
+        existing_ann = self.current_dataset.get_annotation_by_hole(
+            self.current_panoramic_id, self.current_hole_number
+        )
+        
+        if not existing_ann:
+            # 创建标注对象 - 配置文件导入，未确认状态
+            # 使用已导入的 PanoramicAnnotation 类
+            default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+            annotation = PanoramicAnnotation.from_filename(
+                config_annotation['slice_filename'],
+                label=parsed.get('label', ''),
+                microbe_type=parsed.get('microbe_type', default_microbe_type),
+                growth_level=parsed.get('growth_level', 'negative'),
+                interference_factors=parsed.get('interference_factors', []),
+                annotation_source='config',
+                is_confirmed=False
+            )
+            
+            # 添加到数据集
+            self.current_dataset.add_annotation(annotation)
+            log_debug(f"导入配置标注: {config_annotation['annotation_str']}", "LOAD")
+
+    def _has_config_annotation(self, panoramic_id: str, hole_number: int) -> bool:
+        """检查指定孔位是否有配置文件标注"""
+        if not panoramic_id or not self.panoramic_directory:
+            return False
+        
+        try:
+            # 查找全景图文件
+            panoramic_file = self.image_service.find_panoramic_image(
+                f"{panoramic_id}_hole_1.png", 
+                self.panoramic_directory
+            )
+            
+            if not panoramic_file:
+                return False
+            
+            # 查找对应的配置文件
+            config_file = self.config_service.find_config_file(panoramic_file)
+            if not config_file:
+                return False
+            
+            # 解析配置文件
+            config_annotations = self.config_service.parse_config_file(config_file)
+            if not config_annotations:
+                return False
+            
+            # 检查是否有该孔位的标注
+            return hole_number in config_annotations
+        except Exception as e:
+            log_debug(f"检查配置标注时出错: {e}", "LOAD")
+            return False
+
     def load_current_slice(self):
         """加载当前切片"""
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
@@ -1421,17 +1732,37 @@ class PanoramicAnnotationGUI:
             self.log_debug(f"load_current_slice: 旧全景图ID {old_panoramic_id}, 新全景图ID {new_panoramic_id}")
             self.log_debug(f"load_current_slice: 全景图是否改变 {panoramic_changed}")
 
-            # 如果全景图改变，重置标注状态以避免从上一个全景图复制设置
+            # 如果全景图改变，准备重置标注状态，但先检查是否有现有标注
+            reset_to_defaults = False
             if panoramic_changed:
-                self.current_growth_level.set("negative")
-                self.current_microbe_type.set("bacteria")
-                # 重置干扰因素
-                for factor in self.interference_factors:
-                    self.interference_factors[factor].set(False)
-                # 重置增强标注面板
-                if self.enhanced_annotation_panel:
-                    self.enhanced_annotation_panel.reset_annotation()
-                self.log_debug("全景图改变，重置标注状态", "LOAD")
+                # 检查当前孔位是否有已有标注或配置标注
+                existing_ann = self.current_dataset.get_annotation_by_hole(
+                    current_file['panoramic_id'], 
+                    current_file['hole_number']
+                )
+                
+                # 检查是否有配置文件标注
+                has_config_annotation = self._has_config_annotation(
+                    current_file['panoramic_id'], 
+                    current_file['hole_number']
+                )
+                
+                # 只有当没有任何标注时才重置为默认值
+                if not existing_ann and not has_config_annotation:
+                    reset_to_defaults = True
+                    self.current_growth_level.set("negative")
+                    # 根据全景图文件名设置默认微生物类型
+                    default_microbe_type = self.get_default_microbe_type(new_panoramic_id)
+                    self.current_microbe_type.set(default_microbe_type)
+                    # 重置干扰因素
+                    for factor in self.interference_factors:
+                        self.interference_factors[factor].set(False)
+                    # 重置增强标注面板
+                    if self.enhanced_annotation_panel:
+                        self.enhanced_annotation_panel.reset_annotation()
+                    self.log_debug("全景图改变且无现有标注，重置为默认状态", "LOAD")
+                else:
+                    self.log_debug(f"全景图改变但有现有标注 (existing: {existing_ann is not None}, config: {has_config_annotation})，跳过默认重置", "LOAD")
 
             # 更新当前信息
             self.current_panoramic_id = current_file['panoramic_id']
@@ -1490,24 +1821,18 @@ class PanoramicAnnotationGUI:
             # 更新切片信息，包含标注状态
             self.update_slice_info_display()
             
-            # 根据视图模式加载相应的标注数据
+            # 根据视图模式加载相应的标注数据 - 优化为一次性设置
             if hasattr(self, 'current_view_mode') and self.current_view_mode == ViewMode.MODEL:
                 # 模型视图：不加载已有标注，显示模型预测结果
                 log_debug("模型视图模式，显示模型预测结果", "LOAD")
                 self._load_model_view_data()
             else:
-                # 人工视图：只显示人工标注结果，无则不显示任何结果
-                log_debug("人工视图模式，显示人工标注结果", "LOAD")
-                self.load_existing_annotation()
+                # 人工视图：优化标注加载逻辑，避免多次设置
+                log_debug("人工视图模式，优化标注加载", "LOAD")
+                self._load_annotations_optimized()
 
             # 重置修改标记
             self.current_annotation_modified = False
-
-            # 尝试加载配置文件标注（仅在非模型视图时）
-            if not (hasattr(self, 'current_view_mode') and self.current_view_mode == ViewMode.MODEL):
-                self.load_config_annotations()
-            else:
-                log_debug("模型视图模式，跳过加载配置文件标注", "LOAD")
 
             # 延迟强制刷新确保统计和状态完全同步
             self.root.after_idle(self._delayed_navigation_refresh)
@@ -1754,21 +2079,26 @@ class PanoramicAnnotationGUI:
         if hasattr(self, '_panoramic_load_retry_count'):
             self._panoramic_load_retry_count = 0
     
-    def _parse_annotation_string(self, annotation_str: str) -> dict:
+    def _parse_annotation_string(self, annotation_str: str, panoramic_id: str = None) -> dict:
         """
         解析标注字符串，支持复杂格式和中文干扰因素
         
         Args:
             annotation_str: 标注字符串，如 "positive", "positive_with_artifacts", "positive_with_气孔重叠"
+            panoramic_id: 全景图ID，用于确定默认微生物类型
             
         Returns:
-            dict: 包含解析结果的字典 {'label': str, 'growth_level': str, 'interference_factors': list}
+            dict: 包含解析结果的字典 {'label': str, 'growth_level': str, 'microbe_type': str, 'interference_factors': list}
         """
         try:
+            # 根据全景图ID确定默认微生物类型
+            default_microbe_type = self.get_default_microbe_type(panoramic_id)
+            
             # 默认值
             result = {
                 'label': annotation_str,
                 'growth_level': 'negative',
+                'microbe_type': default_microbe_type,
                 'interference_factors': []
             }
             
@@ -1813,6 +2143,7 @@ class PanoramicAnnotationGUI:
                 result.update({
                     'label': annotation_str,
                     'growth_level': growth_level,
+                    'microbe_type': default_microbe_type,
                     'interference_factors': interference_factors
                 })
             else:
@@ -1820,6 +2151,7 @@ class PanoramicAnnotationGUI:
                 result.update({
                     'label': annotation_str,
                     'growth_level': annotation_str,
+                    'microbe_type': default_microbe_type,
                     'interference_factors': []
                 })
             
@@ -1830,6 +2162,7 @@ class PanoramicAnnotationGUI:
             return {
                 'label': annotation_str,
                 'growth_level': 'negative',
+                'microbe_type': self.get_default_microbe_type(panoramic_id),
                 'interference_factors': []
             }
     
@@ -2092,7 +2425,7 @@ class PanoramicAnnotationGUI:
             return {}
     
     def load_existing_annotation(self):
-        """加载已有标注"""
+        """加载已有标注（保留兼容性）"""
         existing_ann = self.current_dataset.get_annotation_by_hole(
             self.current_panoramic_id, 
             self.current_hole_number
@@ -2101,182 +2434,8 @@ class PanoramicAnnotationGUI:
         log_debug(f"加载已有标注 - 孔位{self.current_hole_number}, 有标注: {existing_ann is not None}", "LOAD")
         
         if existing_ann:
-            # 设置界面状态
-            self.current_microbe_type.set(existing_ann.microbe_type)
-            self.current_growth_level.set(existing_ann.growth_level)
-            
-            # 同步时间戳到内存（对所有手动标注处理，包括manual和enhanced_manual）
-            if ((hasattr(existing_ann, 'annotation_source') and 
-                 existing_ann.annotation_source in ['enhanced_manual', 'manual'])):
-                import datetime
-                annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
-                
-                # 强制优先使用annotation对象中的timestamp
-                if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                    try:
-                        if isinstance(existing_ann.timestamp, str):
-                            dt = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                        else:
-                            dt = existing_ann.timestamp
-                        self.last_annotation_time[annotation_key] = dt
-                        log_debug(f"强制使用保存的时间戳: {annotation_key} -> {dt.strftime('%m-%d %H:%M:%S')}", "LOAD")
-                    except Exception as e:
-                        log_error(f"时间戳解析失败: {e}", "TIMESTAMP")
-                        # 解析失败时生成一个默认时间戳，但不使用可能错误的内存缓存
-                        default_time = datetime.datetime.now()
-                        self.last_annotation_time[annotation_key] = default_time
-                        log_debug(f"生成新默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}", "LOAD")
-                else:
-                    # 如果标注对象没有时间戳属性，生成一个默认时间戳
-                    default_time = datetime.datetime.now()
-                    self.last_annotation_time[annotation_key] = default_time
-                    log_debug(f"标注对象无时间戳，生成默认时间戳: {annotation_key} -> {default_time.strftime('%m-%d %H:%M:%S')}", "LOAD")
-                                
-            # 同步到增强标注面板 - 改进逻辑以处理所有手动标注
-            if self.enhanced_annotation_panel:
-                if hasattr(existing_ann, 'enhanced_data'):
-                    # Added: More detailed analysis of enhanced_data structure
-                    if existing_ann.enhanced_data:
-                        if isinstance(existing_ann.enhanced_data, dict):
-                            if 'feature_combination' in existing_ann.enhanced_data:
-                                fc_data = existing_ann.enhanced_data['feature_combination']
-                            else:
-                                log_warning(f"enhanced_data不是字典类型: {type(existing_ann.enhanced_data)}")
-                
-                # 首先检查是否有增强标注数据
-                # 改进逻辑：如果有enhanced_data，就认为是增强标注，不管annotation_source是什么
-                if (hasattr(existing_ann, 'enhanced_data') and 
-                    existing_ann.enhanced_data):
-                    try:
-                        from models.enhanced_annotation import FeatureCombination
-                        enhanced_data = existing_ann.enhanced_data
-                        
-                        # 确保enhanced_data是字典格式
-                        if isinstance(enhanced_data, dict):
-                            # 检查是否包含feature_combination数据
-                            if 'feature_combination' in enhanced_data:
-                                combination_data = enhanced_data['feature_combination']
-                            else:
-                                combination_data = enhanced_data
-                            
-                            combination = FeatureCombination.from_dict(combination_data)
-                            
-                            self.enhanced_annotation_panel.set_feature_combination(combination)
-                            log_debug(f"已恢复增强标注数据 - 级别: {combination.growth_level}, 模式: {combination.growth_pattern}", "LOAD")
-                        else:
-                            log_error(f"增强数据格式错误: {type(enhanced_data)}")
-                            self.sync_basic_to_enhanced_annotation(existing_ann)
-                    except Exception as e:
-                        log_error(f"增强标注数据恢复失败: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        # 如果增强数据解析失败，使用基础数据
-                        self.sync_basic_to_enhanced_annotation(existing_ann)
-                elif existing_ann.annotation_source in ['enhanced_manual', 'manual']:
-                    # 手动标注但没有增强数据，使用基础数据同步到增强面板
-                    log_debug(f"同步手动标注({existing_ann.annotation_source})到增强面板", "LOAD")
-                    log_debug("由于JSON没有enhanced_data，使用基础数据同步 - 将使用区分性默认模式", "FALLBACK")
-                    log_debug(f"原始数据: 生长级别={existing_ann.growth_level}, 源={existing_ann.annotation_source}", "FALLBACK")
-                    self.sync_basic_to_enhanced_annotation(existing_ann)
-                else:
-                    # 配置导入标注：使用默认生长模式
-                    log_debug(f"配置导入标注 - 使用默认生长模式", "LOAD")
-                    if self.enhanced_annotation_panel:
-                        # 使用配置的生长级别初始化面板，设置可区分的默认生长模式
-                        self.enhanced_annotation_panel.initialize_with_defaults(
-                            growth_level=existing_ann.growth_level,
-                            microbe_type=existing_ann.microbe_type,
-                            reset_interference=True  # 配置标注没有干扰因素，重置干扰因素
-                        )
-                        log_debug(f"配置导入标注 - 设置生长级别为默认模式: {existing_ann.growth_level}", "LOAD")
-            
-            # 设置干扰因素（向后兼容）
-            for factor in self.interference_factors:
-                self.interference_factors[factor].set(factor in existing_ann.interference_factors)
-        else:
-            # 没有标注时，重置增强标注面板
-            if self.enhanced_annotation_panel:
-                self.enhanced_annotation_panel.reset_annotation()
-    
-    def sync_basic_to_enhanced_annotation(self, annotation):
-        """将基础标注同步到增强标注面板"""
-        try:
-                        
-            # 检查是否有用户之前选择的growth_pattern
-            user_growth_pattern = getattr(annotation, 'growth_pattern', None)
-                        
-            # 检查是否有干扰因素
-            has_interference_factors = bool(annotation.interference_factors)
-                        
-            if self.enhanced_annotation_panel:
-                # 对于有干扰因素的标注，先初始化但不重置干扰因素
-                if has_interference_factors:
-                                        
-                    if user_growth_pattern:
-                        self.enhanced_annotation_panel.initialize_with_pattern(
-                            growth_level=annotation.growth_level,
-                            microbe_type=annotation.microbe_type,
-                            growth_pattern=user_growth_pattern,
-                            reset_interference=False
-                        )
-                    else:
-                        self.enhanced_annotation_panel.initialize_with_defaults(
-                            growth_level=annotation.growth_level,
-                            microbe_type=annotation.microbe_type,
-                            reset_interference=False
-                        )
-                else:
-                    # 没有干扰因素的标注，正常初始化
-                    if user_growth_pattern:
-                                                self.enhanced_annotation_panel.initialize_with_pattern(
-                            growth_level=annotation.growth_level,
-                            microbe_type=annotation.microbe_type,
-                            growth_pattern=user_growth_pattern
-                        )
-                    else:
-                                                self.enhanced_annotation_panel.initialize_with_defaults(
-                            growth_level=annotation.growth_level,
-                            microbe_type=annotation.microbe_type
-                        )
-                
-                # 处理干扰因素（如果有的话）
-                if annotation.interference_factors:
-                    from models.enhanced_annotation import InterferenceType
-                    
-                    # 干扰因素映射（现在使用标准英文值）
-                    interference_map = {
-                        # 标准英文值
-                        'pores': InterferenceType.PORES,
-                        'artifacts': InterferenceType.ARTIFACTS,
-                        'debris': InterferenceType.DEBRIS,
-                        'contamination': InterferenceType.CONTAMINATION,
-                        # 中文兼容
-                        '气孔': InterferenceType.PORES,
-                        '气孔重叠': InterferenceType.ARTIFACTS,
-                        '伪影': InterferenceType.ARTIFACTS,
-                        '杂质': InterferenceType.DEBRIS,
-                        '污染': InterferenceType.CONTAMINATION,
-                        '污渍': InterferenceType.CONTAMINATION,
-                        # 英文别名兼容
-                        'noise': InterferenceType.ARTIFACTS,     # 噪声 -> 伪影
-                        'edge_blur': InterferenceType.PORES,      # 兼容旧的边缘模糊值
-                        'scratches': InterferenceType.DEBRIS      # 划痕 -> 杂质
-                    }
-                    
-                    for factor in annotation.interference_factors:
-                        if factor in interference_map:
-                            mapped_factor = interference_map[factor]
-                            if mapped_factor in self.enhanced_annotation_panel.interference_vars:
-                                self.enhanced_annotation_panel.interference_vars[mapped_factor].set(True)
-                        else:
-                            log_warning(f"未映射的干扰因素: {factor}")
-                                            
-                            
-        except Exception as e:
-            log_error(f"同步基础标注到增强面板失败: {e}")
-            import traceback
-            traceback.print_exc()
-    
+            self._apply_existing_annotation(existing_ann)
+
     def load_config_annotations(self):
         """加载配置文件中的标注数据"""
         if not self.current_panoramic_id or not self.panoramic_directory:
@@ -2317,59 +2476,136 @@ class PanoramicAnnotationGUI:
                 
                 if not existing_ann:  # 只导入未标注的孔位
                     # 解析标注字符串，支持复杂格式
-                    parsed_annotation = self._parse_annotation_string(annotation_str)
+                    parsed_annotation = self._parse_annotation_string(annotation_str, self.current_panoramic_id)
                     
                     # 查找对应的切片文件
                     slice_filename = f"{self.current_panoramic_id}_hole_{hole_number}.png"
                     
                     # 创建标注对象 - 配置文件导入，未确认状态
+                    # 使用已导入的 PanoramicAnnotation 类
+                    default_microbe_type = self.get_default_microbe_type(self.current_panoramic_id)
                     annotation = PanoramicAnnotation.from_filename(
                         slice_filename,
-                        label=parsed_annotation['label'],
-                        bbox=[0, 0, 70, 70],
-                        confidence=1.0,  # 配置导入置信度默认为1.0
-                        microbe_type=self.current_microbe_type.get(),
-                        growth_level=parsed_annotation['growth_level'],
-                        interference_factors=parsed_annotation['interference_factors'],
-                        annotation_source="config_import",
-                        is_confirmed=False,
-                        panoramic_id=self.current_panoramic_id
+                        label=parsed_annotation.get('label', ''),
+                        microbe_type=parsed_annotation.get('microbe_type', default_microbe_type),
+                        growth_level=parsed_annotation.get('growth_level', 'negative'),
+                        interference_factors=parsed_annotation.get('interference_factors', []),
+                        annotation_source='config',
+                        is_confirmed=False
                     )
                     
-                    # 查找对应的切片文件完整路径
-                    for file_info in self.slice_files:
-                        if (file_info['panoramic_id'] == self.current_panoramic_id and 
-                            file_info['hole_number'] == hole_number):
-                            annotation.image_path = file_info['filepath']
-                            break
-                    
+                    # 添加到数据集
                     self.current_dataset.add_annotation(annotation)
                     imported_count += 1
+                    
+                    log_debug(f"导入配置标注: 孔位{hole_number} - {annotation_str}", "CONFIG")
             
             if imported_count > 0:
-                self.update_status(f"从配置文件导入了 {imported_count} 个标注")
+                log_info(f"从配置文件导入了 {imported_count} 个标注", "CONFIG")
                 self.update_statistics()
                 
                 # 核心修复：配置文件导入后刷新当前孔位的界面显示
                 self.load_existing_annotation()
             
-            # 添加到缓存，避免重复解析
+            # 标记已加载此配置文件
             if not hasattr(self, '_config_cache'):
-                self._config_cache = {}
-            self._config_cache[config_cache_key] = True
-            
-            # 同时存储原始配置数据供颜色外框绘制使用
-            if not hasattr(self, '_config_data_cache'):
-                self._config_data_cache = {}
-            config_data_cache_key = f"{self.current_panoramic_id}_config_data"
-            self._config_data_cache[config_data_cache_key] = config_annotations
-            
-            # 配置文件加载完成后，重绘所有配置框
-            self.root.after(100, self.draw_all_config_hole_boxes)
+                self._config_cache = set()
+            self._config_cache.add(config_cache_key)
             
         except Exception as e:
             log_error(f"加载配置文件标注失败: {e}", "CONFIG")
+            # 没有标注时，重置增强标注面板
+            if self.enhanced_annotation_panel:
+                self.enhanced_annotation_panel.reset_annotation()
     
+    def sync_basic_to_enhanced_annotation(self, annotation):
+        """将基础标注同步到增强标注面板"""
+        try:
+                        
+            # 检查是否有用户之前选择的growth_pattern
+            user_growth_pattern = getattr(annotation, 'growth_pattern', None)
+                        
+            # 检查是否有干扰因素
+            has_interference_factors = bool(annotation.interference_factors)
+                        
+            if self.enhanced_annotation_panel:
+                # 对于有干扰因素的标注，先初始化但不重置干扰因素
+                if has_interference_factors:
+                    # 安全地获取属性
+                    growth_level = getattr(annotation, 'growth_level', 'negative')
+                    default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+                    microbe_type = getattr(annotation, 'microbe_type', default_microbe_type)
+                                        
+                    if user_growth_pattern:
+                        self.enhanced_annotation_panel.initialize_with_pattern(
+                            growth_level=growth_level,
+                            microbe_type=microbe_type,
+                            growth_pattern=user_growth_pattern,
+                            reset_interference=False
+                        )
+                    else:
+                        self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=growth_level,
+                            microbe_type=microbe_type,
+                            reset_interference=False
+                        )
+                else:
+                    # 没有干扰因素的标注，正常初始化
+                    # 安全地获取属性
+                    growth_level = getattr(annotation, 'growth_level', 'negative')
+                    default_microbe_type = self.get_default_microbe_type(getattr(self, 'current_panoramic_id', None))
+                    microbe_type = getattr(annotation, 'microbe_type', default_microbe_type)
+                    
+                    if user_growth_pattern:
+                                                self.enhanced_annotation_panel.initialize_with_pattern(
+                            growth_level=growth_level,
+                            microbe_type=microbe_type,
+                            growth_pattern=user_growth_pattern
+                        )
+                    else:
+                                                self.enhanced_annotation_panel.initialize_with_defaults(
+                            growth_level=growth_level,
+                            microbe_type=microbe_type
+                        )
+                
+                # 处理干扰因素（如果有的话）
+                if annotation.interference_factors:
+                    from models.enhanced_annotation import InterferenceType
+                    
+                    # 干扰因素映射（现在使用标准英文值）
+                    interference_map = {
+                        # 标准英文值
+                        'pores': InterferenceType.PORES,
+                        'artifacts': InterferenceType.ARTIFACTS,
+                        'debris': InterferenceType.DEBRIS,
+                        'contamination': InterferenceType.CONTAMINATION,
+                        # 中文兼容
+                        '气孔': InterferenceType.PORES,
+                        '气孔重叠': InterferenceType.ARTIFACTS,
+                        '伪影': InterferenceType.ARTIFACTS,
+                        '杂质': InterferenceType.DEBRIS,
+                        '污染': InterferenceType.CONTAMINATION,
+                        '污渍': InterferenceType.CONTAMINATION,
+                        # 英文别名兼容
+                        'noise': InterferenceType.ARTIFACTS,     # 噪声 -> 伪影
+                        'edge_blur': InterferenceType.PORES,      # 兼容旧的边缘模糊值
+                        'scratches': InterferenceType.DEBRIS      # 划痕 -> 杂质
+                    }
+                    
+                    for factor in annotation.interference_factors:
+                        if factor in interference_map:
+                            mapped_factor = interference_map[factor]
+                            if mapped_factor in self.enhanced_annotation_panel.interference_vars:
+                                self.enhanced_annotation_panel.interference_vars[mapped_factor].set(True)
+                        else:
+                            log_warning(f"未映射的干扰因素: {factor}")
+                                            
+                            
+        except Exception as e:
+            log_error(f"同步基础标注到增强面板失败: {e}")
+            import traceback
+            traceback.print_exc()
+
     def get_next_hole_info(self):
         """获取下一个孔位的信息"""
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
@@ -2518,72 +2754,107 @@ class PanoramicAnnotationGUI:
             log_error(f"应用干扰因素失败: {e}", "COPY")
     
     def apply_annotation_settings_sync(self, settings):
-        """同步应用标注设置，避免异步时序问题"""
+        """同步应用标注设置，优化性能减少UI刷新次数"""
         if not settings or not hasattr(self, 'enhanced_annotation_panel') or not self.enhanced_annotation_panel:
             return False
         
         try:
-            log_debug(f"开始同步应用设置: 生长级别={settings['growth_level']}", "APPLY_SYNC")
+            log_debug(f"开始优化同步应用设置: 生长级别={settings['growth_level']}", "APPLY_SYNC")
             
-            # 等待界面稳定
-            self.root.update_idletasks()
-            
-            # 分步骤应用设置，确保每步都完成
-            
-            # 步骤1: 设置微生物类型
+            # 批量设置所有参数，减少中间刷新
+            # 1. 设置微生物类型
             self.current_microbe_type.set(settings['microbe_type'])
-            self.root.update_idletasks()
             
-            # 步骤2: 设置生长级别
-            if hasattr(settings['growth_level'], 'value'):
-                growth_level_value = settings['growth_level'].value
-            else:
-                growth_level_value = settings['growth_level']
-            
+            # 2. 设置生长级别
+            growth_level_value = settings['growth_level']
+            if hasattr(growth_level_value, 'value'):
+                growth_level_value = growth_level_value.value
             self.enhanced_annotation_panel.current_growth_level.set(growth_level_value)
-            self.root.update_idletasks()
             
-            # 步骤3: 更新生长模式选项（必须在设置生长级别后）
+            # 3. 更新生长模式选项（必须在设置生长级别后）
             self.enhanced_annotation_panel.update_pattern_options()
-            self.root.update_idletasks()
             
-            # 步骤4: 设置生长模式
+            # 4. 批量设置干扰因素（优化性能）
+            if settings['interference_factors']:
+                self._apply_interference_factors_optimized_fast(settings['interference_factors'])
+            else:
+                # 快速重置干扰因素
+                panel_factors = self.enhanced_annotation_panel.interference_vars
+                for var in panel_factors.values():
+                    var.set(False)
+            
+            # 5. 设置生长模式（放在干扰因素之后）
             if settings['growth_pattern']:
                 self.enhanced_annotation_panel.current_growth_pattern.set(settings['growth_pattern'])
-                self.root.update_idletasks()
             
-            # 步骤5: 设置干扰因素
-            panel_factors = self.enhanced_annotation_panel.interference_vars
-            
-            # 先重置所有干扰因素
-            for var in panel_factors.values():
-                var.set(False)
-            self.root.update_idletasks()
-            
-            # 设置当前设置中的干扰因素
-            interference_count = 0
-            for factor in settings['interference_factors']:
-                if self._apply_single_interference_factor(factor, panel_factors):
-                    interference_count += 1
-            
-            log_debug(f"应用了 {interference_count} 个干扰因素", "APPLY_SYNC")
-            self.root.update_idletasks()
-            
-            # 步骤6: 设置置信度
+            # 6. 设置置信度
             self.enhanced_annotation_panel.current_confidence.set(settings['confidence'])
-            self.root.update_idletasks()
             
-            # 步骤7: 最终刷新
-            self.enhanced_annotation_panel.update_pattern_options()
-            self.root.update_idletasks()
-            self.root.update()
+            # 7. 单次同步UI更新 - 最小化刷新操作
+            self.root.update_idletasks()  # 使用轻量级刷新而非完整update()
             
-            log_debug(f"同步设置应用完成", "APPLY_SYNC")
+            log_debug(f"优化同步设置应用完成", "APPLY_SYNC")
             return True
             
         except Exception as e:
             log_error(f"同步应用设置失败: {e}", "APPLY_SYNC")
             return False
+
+    def _apply_interference_factors_optimized_fast(self, interference_factors):
+        """快速优化的干扰因素应用方法，减少查找和匹配开销"""
+        try:
+            panel_factors = self.enhanced_annotation_panel.interference_vars
+            
+            # 先重置所有干扰因素（批量操作）
+            for var in panel_factors.values():
+                var.set(False)
+            
+            # 使用预构建的快速映射减少查找时间
+            if not hasattr(self, '_interference_factor_mapping'):
+                self._build_interference_factor_mapping()
+            
+            # 快速设置干扰因素
+            applied_count = 0
+            for factor in interference_factors:
+                # 使用预构建映射快速查找
+                panel_var = self._interference_factor_mapping.get(factor)
+                if panel_var:
+                    panel_var.set(True)
+                    applied_count += 1
+                else:
+                    # 如果直接映射失败，尝试值匹配
+                    factor_value = factor.value if hasattr(factor, 'value') else str(factor)
+                    panel_var = self._interference_factor_mapping.get(factor_value)
+                    if panel_var:
+                        panel_var.set(True)
+                        applied_count += 1
+            
+            log_debug(f"快速应用了 {applied_count}/{len(interference_factors)} 个干扰因素", "APPLY_SYNC")
+            
+        except Exception as e:
+            log_error(f"快速应用干扰因素失败: {e}", "APPLY_SYNC")
+    
+    def _build_interference_factor_mapping(self):
+        """构建干扰因素的快速映射表，减少运行时查找开销"""
+        try:
+            self._interference_factor_mapping = {}
+            panel_factors = self.enhanced_annotation_panel.interference_vars
+            
+            for panel_key, panel_var in panel_factors.items():
+                # 直接键映射
+                self._interference_factor_mapping[panel_key] = panel_var
+                
+                # 值映射
+                panel_value = panel_key.value if hasattr(panel_key, 'value') else str(panel_key)
+                self._interference_factor_mapping[panel_value] = panel_var
+                
+                # 字符串表示映射
+                self._interference_factor_mapping[str(panel_key)] = panel_var
+            
+            log_debug(f"构建干扰因素映射表，包含{len(self._interference_factor_mapping)}个条目", "APPLY_SYNC")
+            
+        except Exception as e:
+            log_error(f"构建干扰因素映射失败: {e}", "APPLY_SYNC")
 
     def _apply_single_interference_factor(self, factor, panel_factors):
         """应用单个干扰因素"""
@@ -2658,12 +2929,56 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             log_error(f"记录性能数据失败: {e}", "PERFORMANCE")
 
+    def _record_detailed_copy_timing(self, step_name, duration_ms):
+        """记录详细的复制设置步骤计时"""
+        if not self.performance_monitoring_enabled.get():
+            return
+            
+        try:
+            detailed_stats = self.performance_stats['copy_settings_detailed']
+            
+            if step_name in detailed_stats:
+                detailed_stats[step_name].append(duration_ms)
+                # 保持最近50次记录
+                if len(detailed_stats[step_name]) > 50:
+                    detailed_stats[step_name] = detailed_stats[step_name][-50:]
+                    
+                log_debug(f"详细计时记录: {step_name} = {duration_ms:.1f}ms", "DETAILED_TIMING")
+            else:
+                log_warning(f"未知的详细计时步骤: {step_name}", "DETAILED_TIMING")
+                
+        except Exception as e:
+            log_error(f"记录详细计时失败: {e}", "DETAILED_TIMING")
+
+    def _record_button_state_timing(self, event_type, timestamp_ms):
+        """记录按钮状态变化时间点"""
+        if not self.performance_monitoring_enabled.get():
+            return
+            
+        try:
+            state_stats = self.performance_stats['button_state_changes']
+            
+            if event_type in state_stats:
+                state_stats[event_type].append(timestamp_ms)
+                # 保持最近50次记录
+                if len(state_stats[event_type]) > 50:
+                    state_stats[event_type] = state_stats[event_type][-50:]
+                    
+                log_debug(f"按钮状态计时: {event_type} = {timestamp_ms:.1f}ms", "BUTTON_TIMING")
+            else:
+                log_warning(f"未知的按钮状态事件: {event_type}", "BUTTON_TIMING")
+                
+        except Exception as e:
+            log_error(f"记录按钮状态计时失败: {e}", "BUTTON_TIMING")
+
     def _get_performance_summary(self):
-        """获取性能数据摘要"""
+        """获取性能数据摘要 - 包含详细计时分析"""
         try:
             summary = {
                 'delay_config': self.delay_config.copy(),
                 'stats': {},
+                'detailed_stats': {},  # 新增详细统计
+                'button_timing_stats': {},  # 新增按钮时序统计
                 'recommendations': []
             }
             
@@ -2678,29 +2993,147 @@ class PanoramicAnnotationGUI:
                     'p95_ms': sorted(times)[int(len(times) * 0.95)] if len(times) >= 20 else max(times)
                 }
                 
-                # 分析并给出建议
+                # 分析并给出建议 - 改进的智能建议算法
                 avg_time = summary['stats']['settings_apply']['avg_ms']
                 p95_time = summary['stats']['settings_apply']['p95_ms']
                 current_delay = self.delay_config['settings_apply']
                 
-                if p95_time < current_delay * 0.5:
-                    # 如果95%的操作都比当前延迟快很多，建议减少延迟
-                    recommended_delay = max(50, int(p95_time * 1.2))
+                # 智能延迟建议算法
+                if p95_time < current_delay * 0.2:
+                    # 如果95%的操作都比当前延迟快5倍以上，大幅减少延迟
+                    recommended_delay = max(20, int(p95_time * 3))  # 最小20ms，3倍安全边距
                     summary['recommendations'].append({
                         'type': 'settings_apply_delay',
                         'current': current_delay,
                         'recommended': recommended_delay,
-                        'reason': f'95%操作耗时({p95_time:.1f}ms)明显小于当前延迟({current_delay}ms)，可以减少延迟提高响应速度'
+                        'reason': f'95%操作耗时({p95_time:.1f}ms)明显小于当前延迟({current_delay}ms)，可以大幅减少延迟提高响应速度'
+                    })
+                elif p95_time < current_delay * 0.5:
+                    # 如果95%的操作都比当前延迟快2倍以上，适度减少延迟
+                    recommended_delay = max(30, int(p95_time * 2))  # 最小30ms，2倍安全边距
+                    summary['recommendations'].append({
+                        'type': 'settings_apply_delay',
+                        'current': current_delay,
+                        'recommended': recommended_delay,
+                        'reason': f'95%操作耗时({p95_time:.1f}ms)小于当前延迟({current_delay}ms)，可以减少延迟提高响应速度'
                     })
                 elif avg_time > current_delay * 0.8:
                     # 如果平均时间接近当前延迟，建议增加延迟
-                    recommended_delay = min(300, int(avg_time * 1.5))
+                    recommended_delay = min(800, int(avg_time * 1.1))  # 更保守的建议，最大800ms
                     summary['recommendations'].append({
                         'type': 'settings_apply_delay',
                         'current': current_delay,
                         'recommended': recommended_delay,
                         'reason': f'平均操作耗时({avg_time:.1f}ms)接近当前延迟({current_delay}ms)，建议增加延迟避免设置应用不完整'
                     })
+                
+                # 性能优化成功的正面反馈
+                if avg_time < 10 and current_delay > avg_time * 10:
+                    summary['recommendations'].append({
+                        'type': 'optimization_success',
+                        'target': 'settings_apply_performance',
+                        'current_time': avg_time,
+                        'improvement': f'设置应用性能优异({avg_time:.1f}ms)，相比之前的性能问题已完全解决',
+                        'reason': f'算法优化效果显著，设置应用耗时从数百毫秒降至{avg_time:.1f}ms，建议适当降低延迟提升响应速度'
+                    })
+                
+                # 新增：设置应用性能过慢的优化建议
+                if avg_time > 400:  # 如果设置应用超过400ms
+                    summary['recommendations'].append({
+                        'type': 'performance_optimization',
+                        'target': 'settings_apply',
+                        'current_time': avg_time,
+                        'reason': f'设置应用耗时({avg_time:.1f}ms)过长，建议：1)减少UI刷新频率 2)优化干扰因素匹配算法 3)使用预构建映射表'
+                    })
+                
+                # 新增：总操作时间过长的警告
+                if 'total_copy_times' in summary.get('detailed_stats', {}):
+                    total_avg = summary['detailed_stats']['total_copy_times']['avg_ms']
+                    if total_avg > 2000:  # 总时间超过2秒
+                        summary['recommendations'].append({
+                            'type': 'user_experience_warning',
+                            'target': 'total_operation_time',
+                            'current_time': total_avg,
+                            'reason': f'完整操作耗时({total_avg:.1f}ms)过长，影响用户体验，建议分析各步骤进行针对性优化'
+                        })
+            
+            # === 新增：分析详细的复制设置步骤计时 ===
+            detailed_copy_stats = self.performance_stats['copy_settings_detailed']
+            for step_name, times in detailed_copy_stats.items():
+                if times:
+                    summary['detailed_stats'][step_name] = {
+                        'count': len(times),
+                        'avg_ms': sum(times) / len(times),
+                        'min_ms': min(times),
+                        'max_ms': max(times),
+                        'p95_ms': sorted(times)[int(len(times) * 0.95)] if len(times) >= 10 else max(times),
+                        'last_10_avg': sum(times[-10:]) / len(times[-10:]) if len(times) >= 10 else sum(times) / len(times)
+                    }
+            
+            # === 新增：分析按钮状态变化时序 ===
+            button_timing = self.performance_stats['button_state_changes']
+            
+            # 计算按钮禁用/启用的时间间隔
+            disable_starts = button_timing.get('disable_start_times', [])
+            disable_completes = button_timing.get('disable_complete_times', [])
+            enable_starts = button_timing.get('enable_start_times', [])
+            enable_completes = button_timing.get('enable_complete_times', [])
+            
+            # 按钮禁用耗时
+            if len(disable_starts) == len(disable_completes):
+                disable_durations = [complete - start for start, complete in zip(disable_starts, disable_completes)]
+                if disable_durations:
+                    summary['button_timing_stats']['disable_duration'] = {
+                        'count': len(disable_durations),
+                        'avg_ms': sum(disable_durations) / len(disable_durations),
+                        'max_ms': max(disable_durations)
+                    }
+            
+            # 按钮启用耗时
+            if len(enable_starts) == len(enable_completes):
+                enable_durations = [complete - start for start, complete in zip(enable_starts, enable_completes)]
+                if enable_durations:
+                    summary['button_timing_stats']['enable_duration'] = {
+                        'count': len(enable_durations),
+                        'avg_ms': sum(enable_durations) / len(enable_durations),
+                        'max_ms': max(enable_durations)
+                    }
+            
+            # 完整的按钮状态周期时间（从禁用开始到启用完成）
+            if len(disable_starts) > 0 and len(enable_completes) > 0:
+                min_pairs = min(len(disable_starts), len(enable_completes))
+                if min_pairs > 0:
+                    button_cycles = [enable_completes[i] - disable_starts[i] for i in range(min_pairs)]
+                    summary['button_timing_stats']['full_cycle_duration'] = {
+                        'count': len(button_cycles),
+                        'avg_ms': sum(button_cycles) / len(button_cycles),
+                        'max_ms': max(button_cycles),
+                        'min_ms': min(button_cycles)
+                    }
+            
+            # === 性能瓶颈分析 ===
+            if 'total_copy_times' in summary['detailed_stats']:
+                total_stats = summary['detailed_stats']['total_copy_times']
+                
+                # 找出最耗时的步骤
+                step_times = {}
+                for step_name, stats in summary['detailed_stats'].items():
+                    if step_name != 'total_copy_times':
+                        step_times[step_name] = stats['avg_ms']
+                
+                if step_times:
+                    slowest_step = max(step_times, key=step_times.get)
+                    slowest_time = step_times[slowest_step]
+                    
+                    if slowest_time > total_stats['avg_ms'] * 0.3:  # 如果某步骤占总时间30%以上
+                        summary['recommendations'].append({
+                            'type': 'performance_bottleneck',
+                            'bottleneck_step': slowest_step,
+                            'bottleneck_time': slowest_time,
+                            'total_time': total_stats['avg_ms'],
+                            'percentage': (slowest_time / total_stats['avg_ms']) * 100,
+                            'reason': f'"{slowest_step}" 步骤耗时占总时间的 {(slowest_time / total_stats["avg_ms"]) * 100:.1f}%，是主要性能瓶颈'
+                        })
             
             # 分析UI加载性能
             if self.performance_stats['ui_load_times']:
@@ -2784,13 +3217,13 @@ class PanoramicAnnotationGUI:
             messagebox.showerror("错误", f"显示性能分析失败: {str(e)}")
 
     def _generate_performance_report(self, summary):
-        """生成性能报告文本"""
+        """生成性能报告文本 - 包含详细计时分析"""
         import time
         
         report = []
-        report.append("=" * 60)
-        report.append("全景图像标注工具 - 性能分析报告")
-        report.append("=" * 60)
+        report.append("=" * 80)
+        report.append("全景图像标注工具 - 详细性能分析报告")
+        report.append("=" * 80)
         report.append(f"生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
         report.append("")
         
@@ -2800,7 +3233,7 @@ class PanoramicAnnotationGUI:
             report.append(f"  {key}: {value}ms")
         report.append("")
         
-        # 性能统计
+        # 基础性能统计
         if 'settings_apply' in summary['stats']:
             stats = summary['stats']['settings_apply']
             report.append("设置应用性能统计:")
@@ -2811,6 +3244,82 @@ class PanoramicAnnotationGUI:
             report.append(f"  95%耗时: {stats['p95_ms']:.1f}ms")
             report.append("")
         
+        # === 新增：详细步骤计时分析 ===
+        if 'detailed_stats' in summary and summary['detailed_stats']:
+            report.append("详细步骤计时分析:")
+            report.append("-" * 60)
+            
+            step_order = [
+                'button_disable_times', 'settings_collect_times', 'navigation_times',
+                'ui_refresh_times', 'settings_apply_times', 'button_enable_times', 'total_copy_times'
+            ]
+            
+            step_names = {
+                'button_disable_times': '1. 按钮禁用',
+                'settings_collect_times': '2. 设置收集',  
+                'navigation_times': '3. 导航跳转',
+                'ui_refresh_times': '4. UI刷新准备',
+                'settings_apply_times': '5. 设置应用',
+                'button_enable_times': '6. 按钮启用',
+                'total_copy_times': '总计复制时间'
+            }
+            
+            for step in step_order:
+                if step in summary['detailed_stats']:
+                    stats = summary['detailed_stats'][step]
+                    step_name = step_names.get(step, step)
+                    report.append(f"  {step_name}:")
+                    report.append(f"    执行次数: {stats['count']}")
+                    report.append(f"    平均耗时: {stats['avg_ms']:.1f}ms")
+                    report.append(f"    最小耗时: {stats['min_ms']:.1f}ms")
+                    report.append(f"    最大耗时: {stats['max_ms']:.1f}ms")
+                    if 'last_10_avg' in stats:
+                        report.append(f"    最近10次平均: {stats['last_10_avg']:.1f}ms")
+                    report.append("")
+            
+            # 计算步骤占比
+            if 'total_copy_times' in summary['detailed_stats']:
+                total_avg = summary['detailed_stats']['total_copy_times']['avg_ms']
+                report.append("步骤耗时占比分析:")
+                for step in step_order[:-1]:  # 排除total_copy_times
+                    if step in summary['detailed_stats']:
+                        step_avg = summary['detailed_stats'][step]['avg_ms']
+                        percentage = (step_avg / total_avg) * 100
+                        step_name = step_names.get(step, step)
+                        report.append(f"  {step_name}: {percentage:.1f}%")
+                report.append("")
+        
+        # === 新增：按钮状态变化时序分析 ===
+        if 'button_timing_stats' in summary and summary['button_timing_stats']:
+            report.append("按钮状态变化时序分析:")
+            report.append("-" * 60)
+            
+            if 'disable_duration' in summary['button_timing_stats']:
+                stats = summary['button_timing_stats']['disable_duration']
+                report.append(f"  按钮禁用耗时:")
+                report.append(f"    执行次数: {stats['count']}")
+                report.append(f"    平均耗时: {stats['avg_ms']:.1f}ms")
+                report.append(f"    最大耗时: {stats['max_ms']:.1f}ms")
+                report.append("")
+            
+            if 'enable_duration' in summary['button_timing_stats']:
+                stats = summary['button_timing_stats']['enable_duration']
+                report.append(f"  按钮启用耗时:")
+                report.append(f"    执行次数: {stats['count']}")
+                report.append(f"    平均耗时: {stats['avg_ms']:.1f}ms") 
+                report.append(f"    最大耗时: {stats['max_ms']:.1f}ms")
+                report.append("")
+            
+            if 'full_cycle_duration' in summary['button_timing_stats']:
+                stats = summary['button_timing_stats']['full_cycle_duration']
+                report.append(f"  完整按钮状态周期(禁用→启用):")
+                report.append(f"    执行次数: {stats['count']}")
+                report.append(f"    平均耗时: {stats['avg_ms']:.1f}ms")
+                report.append(f"    最小耗时: {stats['min_ms']:.1f}ms")
+                report.append(f"    最大耗时: {stats['max_ms']:.1f}ms")
+                report.append("")
+        
+        # UI加载性能统计
         if 'ui_load' in summary['stats']:
             stats = summary['stats']['ui_load']
             report.append("UI加载性能统计:")
@@ -2830,6 +3339,8 @@ class PanoramicAnnotationGUI:
             report.append(f"  清除操作: {ops['clear']} 次")
             report.append(f"  设置复制成功: {ops['settings_copy_success']} 次")
             report.append(f"  设置复制失败: {ops['settings_copy_fail']} 次")
+            if 'detailed_timing_collected' in ops:
+                report.append(f"  详细计时收集: {ops['detailed_timing_collected']} 次")
             
             if 'settings_copy_success_rate' in summary['stats']:
                 rate = summary['stats']['settings_copy_success_rate']
@@ -2845,18 +3356,23 @@ class PanoramicAnnotationGUI:
                 if 'current' in rec and 'recommended' in rec:
                     report.append(f"   当前值: {rec['current']}ms")
                     report.append(f"   建议值: {rec['recommended']}ms")
+                elif 'bottleneck_step' in rec:
+                    report.append(f"   瓶颈步骤: {rec['bottleneck_step']}")
+                    report.append(f"   瓶颈耗时: {rec['bottleneck_time']:.1f}ms")
+                    report.append(f"   占比: {rec['percentage']:.1f}%")
                 report.append(f"   原因: {rec['reason']}")
                 report.append("")
         else:
             report.append("优化建议: 当前配置表现良好，无需调整")
             report.append("")
         
-        report.append("=" * 60)
+        report.append("=" * 80)
         report.append("说明:")
-        report.append("1. 此报告基于实际使用数据生成")
+        report.append("1. 此报告基于实际使用数据生成，包含详细的步骤计时分析")
         report.append("2. 建议值仅供参考，请根据实际体验调整")
         report.append("3. 可在调试面板中手动调整延迟参数")
-        report.append("=" * 60)
+        report.append("4. 详细计时数据有助于识别性能瓶颈和优化方向")
+        report.append("=" * 80)
         
         return "\n".join(report)
 
@@ -2887,16 +3403,38 @@ class PanoramicAnnotationGUI:
     def _clear_performance_data(self):
         """清除性能数据"""
         if messagebox.askyesno("确认", "确定要清除所有性能数据吗？"):
+            # 重置为初始状态，包含详细计时结构
             self.performance_stats = {
                 'settings_apply_times': [],
                 'ui_load_times': [],
                 'button_response_times': [],
+                
+                # 详细的复制设置步骤计时
+                'copy_settings_detailed': {
+                    'button_disable_times': [],
+                    'settings_collect_times': [],
+                    'navigation_times': [],
+                    'ui_refresh_times': [],
+                    'settings_apply_times': [],
+                    'button_enable_times': [],
+                    'total_copy_times': []
+                },
+                
+                # 按钮状态变化计时
+                'button_state_changes': {
+                    'disable_start_times': [],
+                    'disable_complete_times': [],
+                    'enable_start_times': [],
+                    'enable_complete_times': []
+                },
+                
                 'operation_counts': {
                     'save_and_next': 0,
                     'skip': 0, 
                     'clear': 0,
                     'settings_copy_success': 0,
-                    'settings_copy_fail': 0
+                    'settings_copy_fail': 0,
+                    'detailed_timing_collected': 0
                 }
             }
             messagebox.showinfo("完成", "性能数据已清除")
@@ -3042,7 +3580,11 @@ class PanoramicAnnotationGUI:
             messagebox.showerror("错误", f"显示延迟配置对话框失败: {str(e)}")
     
     def should_copy_settings(self, current_settings, next_hole_info):
-        """判断是否应该复制设置 - 只有人工视图且生长级别一致时才复制"""
+        """
+        判断是否应该复制设置
+        条件1: 下一个切片未标注过
+        条件2: 当前切片的生长级别与下一个切片的CFG配置生长级别一致
+        """
         if not current_settings or not next_hole_info:
             return False
 
@@ -3051,42 +3593,81 @@ class PanoramicAnnotationGUI:
             log_debug(f"当前视图模式为{self.current_view_mode.value}，不复制设置", "COPY")
             return False
 
-        # 获取下一个孔位的CFG配置生长级别
-        config_growth_level = self.get_config_growth_level(next_hole_info['hole_number'])
-
-        if config_growth_level:
-            log_debug(f"下一个孔位CFG配置生长级别: {config_growth_level}", "COPY")
-
-            # 规范化当前生长级别（处理枚举和字符串）
-            current_growth_level = current_settings['growth_level']
-            if hasattr(current_growth_level, 'value'):
-                current_growth_level = current_growth_level.value
-
-            if config_growth_level != current_growth_level:
-                log_debug(f"CFG生长级别不同：当前={current_growth_level}, CFG={config_growth_level}，不复制设置", "COPY")
-                return False
-            else:
-                log_debug(f"CFG生长级别相同：{config_growth_level}，允许复制设置", "COPY")
-                return True
-        else:
-            log_debug(f"下一个孔位无CFG配置，不复制设置", "COPY")
+        # 条件1: 检查下一个切片是否已经标注过
+        next_hole_number = next_hole_info['hole_number']
+        next_panoramic_id = next_hole_info.get('panoramic_id')
+        
+        if self.is_hole_annotated(next_hole_number, next_panoramic_id):
+            log_debug(f"下一个孔位{next_hole_number}已标注过，不复制设置以避免覆盖", "COPY")
             return False
-    
-    def get_config_growth_level(self, hole_number):
-        """获取配置文件中指定孔位的生长级别"""
-        # 使用正确的配置数据获取方法
-        config_data = self.get_current_panoramic_config()
-        if not config_data:
-            return None
 
-        # 查找配置文件中该孔位的生长级别设置
-        if hole_number in config_data:
-            growth_level = config_data[hole_number]
-            if growth_level:
-                log_debug(f"孔位{hole_number}配置生长级别: {growth_level}", "COPY")
-                return growth_level
+        # 条件2: 检查生长级别是否一致
+        config_growth_level = self.get_config_growth_level(next_hole_number)
+        if not config_growth_level:
+            log_debug(f"下一个孔位{next_hole_number}无CFG配置，不复制设置", "COPY")
+            return False
 
-        return None
+        # 规范化当前生长级别（处理枚举和字符串）
+        current_growth_level = current_settings['growth_level']
+        if hasattr(current_growth_level, 'value'):
+            current_growth_level = current_growth_level.value
+
+        if config_growth_level != current_growth_level:
+            log_debug(f"生长级别不同：当前={current_growth_level}, CFG={config_growth_level}，不复制设置", "COPY")
+            return False
+
+        log_debug(f"满足复制条件: 孔位{next_hole_number}未标注且生长级别相同({config_growth_level})，允许复制设置", "COPY")
+        return True
+
+    def is_hole_annotated(self, hole_number, panoramic_id=None):
+        """检查指定孔位是否已经标注过"""
+        try:
+            # 使用当前全景图ID（如果未提供）
+            if not panoramic_id:
+                panoramic_id = self.current_panoramic_id
+            
+            if not panoramic_id:
+                return False
+
+            # 检查数据集中是否存在该孔位的标注
+            if hasattr(self, 'dataset') and self.dataset:
+                for annotation in self.dataset.annotations:
+                    if (annotation.panoramic_id == panoramic_id and 
+                        annotation.hole_number == hole_number):
+                        # 检查是否有实际的标注内容（不是默认值）
+                        has_annotation = (
+                            getattr(annotation, 'microbe_type', None) or 
+                            getattr(annotation, 'growth_level', None) or 
+                            getattr(annotation, 'growth_pattern', None) or 
+                            getattr(annotation, 'interference_factors', None) or
+                            getattr(annotation, 'confidence', 0) > 0
+                        )
+                        if has_annotation:
+                            log_debug(f"孔位{hole_number}已有标注: {annotation.growth_level}", "COPY")
+                            return True
+
+            # 检查增强标注
+            if hasattr(self, 'enhanced_annotations') and self.enhanced_annotations:
+                annotation_key = f"{panoramic_id}_{hole_number}"
+                if annotation_key in self.enhanced_annotations:
+                    enhanced_annotation = self.enhanced_annotations[annotation_key]
+                    # 检查是否有实际的增强标注内容
+                    has_enhanced_annotation = (
+                        enhanced_annotation.growth_level or 
+                        enhanced_annotation.growth_pattern or 
+                        enhanced_annotation.interference_factors or
+                        enhanced_annotation.confidence > 0
+                    )
+                    if has_enhanced_annotation:
+                        log_debug(f"孔位{hole_number}已有增强标注", "COPY")
+                        return True
+
+            log_debug(f"孔位{hole_number}未标注过", "COPY")
+            return False
+
+        except Exception as e:
+            log_error(f"检查孔位{hole_number}标注状态失败: {e}", "COPY")
+            return True  # 安全起见，如果检查失败则认为已标注，避免覆盖
     
     def _disable_annotation_controls(self):
         """禁用标注相关控件"""
@@ -3149,150 +3730,392 @@ class PanoramicAnnotationGUI:
             log_debug(f"恢复导航按钮时出错: {e}", "BUTTON_STATE")
     
     def save_current_annotation(self):
-        """保存当前标注并跳转到下一个 - 带性能监控"""
+        """保存当前标注并跳转到下一个 - 智能设置继承策略"""
         # 防重复点击保护
         if self.is_saving:
             log_debug("保存操作正在进行中，忽略重复点击", "SAVE")
             return
         
+        # *** 新版本智能设置继承开始标记 ***
+        log_info("*** 新版本智能设置继承 - 开始执行 ***", "SMART_INHERIT")
+        
         # 记录操作开始时间 (用于性能监控)
         import time
         operation_start_time = time.time()
+        
+        # === 步骤1: 禁用按钮和控件 ===
+        button_disable_start = time.time()
+        self._record_button_state_timing('disable_start_times', button_disable_start * 1000)
         
         # 设置保存状态
         self.is_saving = True
         self._disable_annotation_controls()
         
+        button_disable_time = (time.time() - button_disable_start) * 1000
+        self._record_detailed_copy_timing('button_disable_times', button_disable_time)
+        self._record_button_state_timing('disable_complete_times', time.time() * 1000)
+        
         # 记录操作计数
-        self._record_performance_data('save_and_next', 0)  # 先记录操作次数
+        self._record_performance_data('save_and_next', 0)
         
         try:
-            log_debug(f"用户点击保存并下一个 - 调用 save_current_annotation 方法", "SAVE")
+            log_debug(f"用户点击保存并下一个 - 开始智能设置继承", "SAVE")
             
-            # 记录当前视图模式，用于保持视图一致性
+            # === 步骤2: 收集当前设置信息 ===
+            settings_collect_start = time.time()
+            log_info("*** 开始收集设置信息 ***", "SMART_INHERIT")
+            
+            # 记录当前视图模式
             original_view_mode = self.current_view_mode
             log_debug(f"保存前视图模式: {original_view_mode.value}", "SAVE")
 
-            # 获取当前标注设置
+            # 获取当前标注设置（作为下一个孔位的潜在设置）
             current_settings = self.get_current_annotation_settings()
-
+            log_info(f"*** 获取当前设置: {current_settings is not None} ***", "SMART_INHERIT")
+            
             # 获取下一个孔位信息
             next_hole_info = self.get_next_hole_info()
+            log_info(f"*** 获取下个孔位信息: {next_hole_info is not None} ***", "SMART_INHERIT")
+            
+            settings_collect_time = (time.time() - settings_collect_start) * 1000
+            self._record_detailed_copy_timing('settings_collect_times', settings_collect_time)
+            log_timing(f"设置收集完成，耗时: {settings_collect_time:.1f}ms")
 
-            if self.save_current_annotation_internal("manual"):
-                # 模型视图特殊处理：不复制设置，让模型预测结果保持不变
-                if original_view_mode == ViewMode.MODEL:
-                    log_debug(f"模型视图模式，不复制设置到下一个孔位，保持模型预测结果", "SAVE")
-                    # 正常跳转，让模型预测结果自动加载
-                    ui_load_start = time.time()
-                    self.go_next_hole()
-                    ui_load_time = (time.time() - ui_load_start) * 1000  # 转换为毫秒
-                    self._record_performance_data('ui_load', ui_load_time)
-                    
-                    current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
-                    status_msg = f"已保存标注: {current_file['filename']} (保持{original_view_mode.value}视图)"
-                    self.update_status(status_msg)
-                else:
-                    # 人工和CFG视图的智能复制逻辑
-                    if current_settings and next_hole_info:
-                        if self.should_copy_settings(current_settings, next_hole_info):
-                            log_debug(f"准备智能复制设置到下一个孔位", "SAVE")
+            log_info("*** 调用 save_current_annotation_internal ***", "SMART_INHERIT")
+            internal_result = self.save_current_annotation_internal("manual")
+            log_info(f"*** save_current_annotation_internal 返回: {internal_result} ***", "SMART_INHERIT")
+            
+            if internal_result:
+                # === 步骤3: 导航跳转 ===
+                log_info("*** 开始导航跳转 ***", "SMART_INHERIT")
+                navigation_start = time.time()
+                self.go_next_hole()
+                navigation_time = (time.time() - navigation_start) * 1000
+                self._record_detailed_copy_timing('navigation_times', navigation_time)
+                self._record_performance_data('ui_load', navigation_time)
+                log_timing(f"导航跳转完成，耗时: {navigation_time:.1f}ms")
+                log_info("*** 导航跳转完成 ***", "SMART_INHERIT")
 
-                            # 自动跳转到下一个
-                            ui_load_start = time.time()
-                            self.go_next_hole()
-                            ui_load_time = (time.time() - ui_load_start) * 1000
-                            self._record_performance_data('ui_load', ui_load_time)
-
-                            # 使用标准配置的延迟应用设置，确保界面加载完成（保留原有逻辑）
-                            def apply_settings_delayed():
-                                settings_apply_start = time.time()
-                                
-                                if self.apply_annotation_settings(current_settings):
-                                    settings_apply_time = (time.time() - settings_apply_start) * 1000
-                                    self._record_performance_data('settings_apply', settings_apply_time, success=True)
-                                    
-                                    status_msg = f"已保存标注并智能复制设置到孔位{self.current_hole_number}"
-                                    if original_view_mode != ViewMode.MANUAL:
-                                        status_msg += f" (保持{original_view_mode.value}视图)"
-                                    self.update_status(status_msg)
-                                    
-                                    log_debug(f"设置应用成功，耗时: {settings_apply_time:.1f}ms", "PERFORMANCE")
-                                else:
-                                    settings_apply_time = (time.time() - settings_apply_start) * 1000
-                                    self._record_performance_data('settings_apply', settings_apply_time, success=False)
-                                    
-                                    self.update_status(f"已保存标注，但设置复制失败")
-                                    log_debug(f"延迟应用失败，耗时: {settings_apply_time:.1f}ms", "PERFORMANCE")
-                                    
-                                    # 如果延迟应用失败，尝试同步应用作为后备
-                                    log_debug("延迟应用失败，尝试同步应用作为后备", "SAVE")
-                                    sync_start = time.time()
-                                    if self.apply_annotation_settings_sync(current_settings):
-                                        sync_time = (time.time() - sync_start) * 1000
-                                        self._record_performance_data('settings_apply', sync_time, success=True)
-                                        
-                                        status_msg = f"已保存标注并通过同步方式复制设置到孔位{self.current_hole_number}"
-                                        if original_view_mode != ViewMode.MANUAL:
-                                            status_msg += f" (保持{original_view_mode.value}视图)"
-                                        self.update_status(status_msg)
-                                        log_debug(f"同步应用成功，耗时: {sync_time:.1f}ms", "PERFORMANCE")
-                                    else:
-                                        sync_time = (time.time() - sync_start) * 1000
-                                        self._record_performance_data('settings_apply', sync_time, success=False)
-                                        self.update_status(f"已保存标注，但设置复制完全失败")
-
-                            # 使用标准配置的延迟时间
-                            delay_time = self.delay_config['settings_apply']
-                            log_debug(f"使用标准配置延迟时间: {delay_time}ms", "PERFORMANCE")
-                            self.root.after(delay_time, apply_settings_delayed)
-                        else:
-                            # 不复制设置，正常跳转
-                            ui_load_start = time.time()
-                            self.go_next_hole()
-                            ui_load_time = (time.time() - ui_load_start) * 1000
-                            self._record_performance_data('ui_load', ui_load_time)
-                            
-                            current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
-                            status_msg = f"已保存标注: {current_file['filename']}"
-                            if original_view_mode != ViewMode.MANUAL:
-                                status_msg += f" (保持{original_view_mode.value}视图)"
-                            self.update_status(status_msg)
-                    else:
-                        # 无法获取设置或下一个孔位信息，正常跳转
-                        ui_load_start = time.time()
-                        self.go_next_hole()
-                        ui_load_time = (time.time() - ui_load_start) * 1000
-                        self._record_performance_data('ui_load', ui_load_time)
+                # === 步骤4: 智能设置继承策略 ===
+                log_info(f"*** 检查是否需要应用智能设置继承: current_settings={current_settings is not None}, next_hole_info={next_hole_info is not None} ***", "SMART_INHERIT")
+                if current_settings and next_hole_info:
+                    log_info("*** 开始智能设置继承策略 ***", "SMART_INHERIT")
+                    def apply_smart_settings():
+                        log_info("*** 进入 apply_smart_settings 函数 ***", "SMART_INHERIT")
+                        # === 步骤4.1: UI刷新准备 ===
+                        ui_refresh_start = time.time()
+                        self.root.update_idletasks()
+                        ui_refresh_time = (time.time() - ui_refresh_start) * 1000
+                        self._record_detailed_copy_timing('ui_refresh_times', ui_refresh_time)
                         
-                        current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
-                        status_msg = f"已保存标注: {current_file['filename']}"
+                        # === 步骤4.2: 智能设置应用 ===
+                        log_info("*** 开始调用智能设置继承策略 ***", "SMART_INHERIT")
+                        settings_apply_start = time.time()
+                        
+                        success, strategy = self._apply_smart_inheritance_strategy(
+                            current_settings, next_hole_info, original_view_mode
+                        )
+                        log_info(f"*** 智能设置继承策略完成: success={success}, strategy={strategy} ***", "SMART_INHERIT")
+                        
+                        settings_apply_time = (time.time() - settings_apply_start) * 1000
+                        self._record_detailed_copy_timing('settings_apply_times', settings_apply_time)
+                        self._record_performance_data('settings_apply', settings_apply_time, success=success)
+                        
+                        # === 步骤4.3: 启用按钮 ===
+                        button_enable_start = time.time()
+                        self._record_button_state_timing('enable_start_times', button_enable_start * 1000)
+                        self._enable_annotation_controls()
+                        button_enable_time = (time.time() - button_enable_start) * 1000
+                        self._record_detailed_copy_timing('button_enable_times', button_enable_time)
+                        self._record_button_state_timing('enable_complete_times', time.time() * 1000)
+                        
+                        # === 记录总时间 ===
+                        total_copy_time = (time.time() - operation_start_time) * 1000
+                        self._record_detailed_copy_timing('total_copy_times', total_copy_time)
+                        self.performance_stats['operation_counts']['detailed_timing_collected'] += 1
+                        
+                        # 根据策略显示状态消息
+                        strategy_messages = {
+                            "keep_current": f"保持当前设置到孔位{self.current_hole_number}",
+                            "apply_existing": f"应用已有标注到孔位{self.current_hole_number}",
+                            "apply_cfg": f"应用CFG配置到孔位{self.current_hole_number}",
+                            "apply_model": f"应用模型预测到孔位{self.current_hole_number}",
+                            "reset_default": f"重置为默认设置到孔位{self.current_hole_number}"
+                        }
+                        
+                        status_msg = f"已保存标注并{strategy_messages.get(strategy, '更新设置')}"
                         if original_view_mode != ViewMode.MANUAL:
                             status_msg += f" (保持{original_view_mode.value}视图)"
                         self.update_status(status_msg)
+                        
+                        log_perf(f"智能设置继承完成，策略: {strategy}，总耗时: {total_copy_time:.1f}ms")
 
-                # 确保视图模式保持不变（除非是人工视图的特殊处理）
+                    # 使用优化的延迟时间
+                    delay_time = self.delay_config['settings_apply']
+                    log_debug(f"使用延迟时间: {delay_time}ms", "PERFORMANCE")
+                    log_info(f"*** 设置延迟调用 apply_smart_settings，延迟时间: {delay_time}ms ***", "SMART_INHERIT")
+                    self.root.after(delay_time, apply_smart_settings)
+                else:
+                    # 无设置信息，直接启用控件
+                    log_info("*** 无设置信息，直接启用控件 ***", "SMART_INHERIT")
+                    self._enable_annotation_controls()
+                    current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
+                    self.update_status(f"已保存标注: {current_file['filename']}")
+
+                # 确保视图模式保持不变
+                log_info("*** 检查视图模式是否需要恢复 ***", "SMART_INHERIT")
                 if self.current_view_mode != original_view_mode:
                     log_debug(f"恢复视图模式从 {self.current_view_mode.value} 到 {original_view_mode.value}", "SAVE")
+                    log_info(f"*** 恢复视图模式从 {self.current_view_mode.value} 到 {original_view_mode.value} ***", "SMART_INHERIT")
                     self.set_view_mode(original_view_mode)
+                else:
+                    log_info("*** 视图模式无需恢复 ***", "SMART_INHERIT")
+                
+                log_info("*** save_current_annotation 方法正常结束 ***", "SMART_INHERIT")
 
         except Exception as e:
             import traceback
             error_msg = f"保存标注失败: {str(e)}"
             # 记录详细错误信息到日志
             log_error(f"{error_msg}\n{traceback.format_exc()}")
+            log_info(f"*** save_current_annotation 捕获异常: {error_msg} ***", "SMART_INHERIT")
             # 同时显示简化的用户友好错误消息
             messagebox.showerror("错误", error_msg)
+            self._enable_annotation_controls()  # 确保在错误时恢复按钮状态
         finally:
-            # 记录总操作时间
-            total_operation_time = (time.time() - operation_start_time) * 1000
-            self._record_performance_data('button_response', total_operation_time)
+            # 记录总操作时间（非复制设置的情况）
+            if not hasattr(self, '_detailed_timing_recorded'):
+                total_operation_time = (time.time() - operation_start_time) * 1000
+                self._record_performance_data('button_response', total_operation_time)
             
             # 无论成功失败，都要恢复按钮状态
             # 使用标准配置的恢复延迟时间
             recovery_delay = self.delay_config['button_recovery']
             log_debug(f"使用标准配置按钮恢复延迟: {recovery_delay}ms", "PERFORMANCE")
             self.root.after(recovery_delay, self._enable_annotation_controls)
+    
+    def _apply_smart_inheritance_strategy(self, current_settings, next_hole_info, view_mode):
+        """智能设置继承策略 - 根据不同情况和视图模式选择最优策略
+        
+        策略优先级：
+        0. 模型视图：优先使用模型预测（如果可用）
+        1. 用户手动标注：保持不变（最高优先级）
+        2. CFG配置：根据生长级别匹配情况决定复制设置还是应用CFG
+        3. 无配置：复制当前设置（手动视图）或重置为默认（其他情况）
+        """
+        log_info("*** 进入 _apply_smart_inheritance_strategy 方法 ***", "SMART_INHERIT")
+        try:
+            next_hole_number = next_hole_info['hole_number']
+            next_panoramic_id = next_hole_info.get('panoramic_id')
+            
+            log_debug(f"开始智能设置继承 - 目标孔位{next_hole_number}，视图模式: {view_mode.value}", "SMART_INHERIT")
+            log_info(f"*** 目标孔位: {next_hole_number}, 全景图ID: {next_panoramic_id} ***", "SMART_INHERIT")
+            
+            # 策略0: 模型视图优先处理 - 优先显示模型预测
+            if view_mode == ViewMode.MODEL:
+                log_info("*** 策略0: 模型视图 - 优先检查模型预测 ***", "SMART_INHERIT")
+                if hasattr(self, 'hole_manager') and self.hole_manager:
+                    if self.hole_manager.has_hole_suggestion(next_hole_number):
+                        log_info(f"*** 策略0: 找到模型预测，应用模型预测到孔位{next_hole_number} ***", "SMART_INHERIT")
+                        self._load_model_view_data()
+                        return True, "apply_model"
+                    else:
+                        log_info(f"*** 策略0: 孔位{next_hole_number}无模型预测，继续其他策略 ***", "SMART_INHERIT")
+                else:
+                    log_info(f"*** 策略0: 无hole_manager或未初始化，继续其他策略 ***", "SMART_INHERIT")
+            
+            # 策略1: 用户手动标注保护（仅人工视图）
+            log_info("*** 策略1: 检查下一个孔位是否已有用户手动标注（仅人工视图） ***", "SMART_INHERIT")
+            
+            # 只在人工视图下保护手动标注
+            if view_mode == ViewMode.MANUAL:
+                existing_annotation = self.current_dataset.get_annotation_by_hole(
+                    next_panoramic_id or self.current_panoramic_id, 
+                    next_hole_number
+                )
+                
+                # 检查是否为用户手动标注（只对用户手动标注保持不变）
+                if existing_annotation and hasattr(existing_annotation, 'annotation_source'):
+                    is_manual_annotation = existing_annotation.annotation_source in ['enhanced_manual', 'manual']
+                    log_info(f"*** 人工视图-找到已有标注，来源: {existing_annotation.annotation_source}, 是否手动标注: {is_manual_annotation} ***", "SMART_INHERIT")
+                    
+                    if is_manual_annotation:
+                        log_strategy(f"策略1: 人工视图-孔位{next_hole_number}已有用户手动标注，保持不变")
+                        self._apply_existing_annotation(existing_annotation)
+                        return True, "apply_existing"
+                    else:
+                        log_strategy(f"策略1: 人工视图-孔位{next_hole_number}已有非手动标注({existing_annotation.annotation_source})，进入策略2判断")
+                else:
+                    if existing_annotation:
+                        log_info(f"*** 人工视图-找到已有标注，但无annotation_source属性，视为非手动标注 ***", "SMART_INHERIT")
+                    else:
+                        log_info(f"*** 人工视图-孔位{next_hole_number}无已有标注 ***", "SMART_INHERIT")
+            else:
+                log_info(f"*** 模型视图-跳过手动标注保护，进入策略2 ***", "SMART_INHERIT")
+            
+            # 策略2: 检查是否有CFG配置
+            log_info("*** 策略2: 检查是否有CFG配置 ***", "SMART_INHERIT")
+            config_growth_level = self.get_config_growth_level(next_hole_number)
+            current_growth_level = current_settings['growth_level']
+            if hasattr(current_growth_level, 'value'):
+                current_growth_level = current_growth_level.value
+            
+            log_debug(f"智能设置继承 - 孔位{next_hole_number}: CFG生长级别='{config_growth_level}', 当前生长级别='{current_growth_level}'", "SMART_INHERIT")
+            log_info(f"*** CFG生长级别: '{config_growth_level}', 当前生长级别: '{current_growth_level}' ***", "SMART_INHERIT")
+            
+            if config_growth_level:
+                # 有CFG配置，比较生长级别
+                if config_growth_level == current_growth_level:
+                    log_strategy(f"策略2A: 孔位{next_hole_number}CFG生长级别匹配({config_growth_level})，复制当前设置")
+                    # 生长级别匹配，复制当前设置
+                    if self.apply_annotation_settings_sync(current_settings):
+                        return True, "keep_current"
+                    else:
+                        log_debug_detail(f"复制当前设置失败，降级到CFG配置")
+                        self._apply_cfg_based_settings(next_hole_number, config_growth_level)
+                        return True, "apply_cfg"
+                else:
+                    log_strategy(f"策略2B: 孔位{next_hole_number}CFG生长级别不匹配(当前:{current_growth_level}, CFG:{config_growth_level})，应用CFG配置")
+                    # 生长级别不匹配，直接应用CFG配置
+                    log_debug_detail(f"应用CFG配置到孔位{next_hole_number}")
+                    self._apply_cfg_based_settings(next_hole_number, config_growth_level)
+                    return True, "apply_cfg"
+            else:
+                # 策略3: 无CFG配置，这是大部分连续孔位的情况，复制当前设置
+                log_strategy(f"策略3: 孔位{next_hole_number}无CFG配置，复制当前设置（最常见情况）")
+                if self.apply_annotation_settings_sync(current_settings):
+                    log_debug_detail(f"策略3: 成功复制当前设置")
+                    return True, "keep_current"
+                else:
+                    log_debug(f"复制当前设置失败，重置为默认设置", "SMART_INHERIT")
+                    log_info(f"*** 策略3: 复制当前设置失败，重置为默认设置 ***", "SMART_INHERIT")
+                    # 复制失败，重置为默认设置
+                    self._apply_default_settings(next_hole_number)
+                    return True, "reset_default"
+                
+        except Exception as e:
+            log_error(f"智能设置继承失败: {e}", "SMART_INHERIT")
+            return False, "error"
+
+    def _apply_cfg_based_settings(self, hole_number, cfg_growth_level):
+        """根据CFG配置应用设置"""
+        try:
+            log_debug(f"应用CFG设置 - 孔位{hole_number}, 生长级别{cfg_growth_level}", "CFG_APPLY")
+            
+            # 根据全景图文件名设置默认微生物类型
+            default_microbe_type = self.get_default_microbe_type(self.current_panoramic_id)
+            
+            # 设置基本属性
+            self.current_microbe_type.set(default_microbe_type)
+            
+            # 应用到增强标注面板
+            if self.enhanced_annotation_panel:
+                # 设置生长级别
+                self.enhanced_annotation_panel.current_growth_level.set(cfg_growth_level)
+                
+                # 更新生长模式选项
+                self.enhanced_annotation_panel.update_pattern_options()
+                
+                # 重置干扰因素
+                panel_factors = self.enhanced_annotation_panel.interference_vars
+                for var in panel_factors.values():
+                    var.set(False)
+                
+                # 获取可用的生长模式选项（直接从面板逻辑复制）
+                microbe_type = default_microbe_type
+                pattern_options = {
+                    "negative": ["clean"],
+                    "weak_growth": ["default_weak_growth", "small_dots", "light_gray", "irregular_areas"],
+                    "positive": (["default_positive", "clustered", "scattered", "heavy_growth"] if microbe_type == "bacteria"
+                                else ["default_positive", "focal", "diffuse", "heavy_growth"])
+                }
+                
+                available_patterns = pattern_options.get(cfg_growth_level, [])
+                if available_patterns:
+                    # 设置为第一个可用的模式
+                    self.enhanced_annotation_panel.current_growth_pattern.set(available_patterns[0])
+                else:
+                    # 如果没有可用模式，清空设置
+                    self.enhanced_annotation_panel.current_growth_pattern.set("")
+                
+                # 设置默认置信度
+                self.enhanced_annotation_panel.current_confidence.set(1.0)
+                
+                # 轻量级UI刷新
+                self.root.update_idletasks()
+                
+                log_debug(f"CFG设置应用完成: {default_microbe_type}, {cfg_growth_level}", "CFG_APPLY")
+            
+        except Exception as e:
+            log_error(f"应用CFG设置失败: {e}", "CFG_APPLY")
+
+    def _apply_default_settings(self, hole_number):
+        """应用默认设置"""
+        try:
+            log_debug(f"应用默认设置 - 孔位{hole_number}", "DEFAULT_APPLY")
+            
+            # 根据全景图文件名设置默认微生物类型
+            default_microbe_type = self.get_default_microbe_type(self.current_panoramic_id)
+            
+            # 设置基本属性
+            self.current_microbe_type.set(default_microbe_type)
+            
+            # 应用到增强标注面板
+            if self.enhanced_annotation_panel:
+                # 重置为阴性
+                self.enhanced_annotation_panel.current_growth_level.set('negative')
+                
+                # 更新生长模式选项
+                self.enhanced_annotation_panel.update_pattern_options()
+                
+                # 重置干扰因素
+                panel_factors = self.enhanced_annotation_panel.interference_vars
+                for var in panel_factors.values():
+                    var.set(False)
+                
+                # 设置阴性默认模式
+                # 对于阴性，默认使用 "clean" 模式
+                self.enhanced_annotation_panel.current_growth_pattern.set("clean")
+                
+                # 设置默认置信度
+                self.enhanced_annotation_panel.current_confidence.set(1.0)
+                
+                # 轻量级UI刷新
+                self.root.update_idletasks()
+                
+                log_debug(f"默认设置应用完成: {default_microbe_type}, negative", "DEFAULT_APPLY")
+            
+        except Exception as e:
+            log_error(f"应用默认设置失败: {e}", "DEFAULT_APPLY")
+
+    def get_config_growth_level(self, hole_number):
+        """获取指定孔位的CFG配置生长级别"""
+        try:
+            if not hasattr(self, 'current_panoramic_id') or not self.current_panoramic_id:
+                log_debug(f"get_config_growth_level: 没有current_panoramic_id", "CFG")
+                return None
+            
+            # 获取当前全景图的配置数据
+            config_data = self.get_current_panoramic_config()
+            log_debug(f"get_config_growth_level: 孔位{hole_number}, 配置数据数量={len(config_data) if config_data else 0}", "CFG")
+            
+            if not config_data or hole_number not in config_data:
+                log_debug(f"get_config_growth_level: 孔位{hole_number}没有CFG配置", "CFG")
+                return None
+            
+            # 解析标注字符串获取生长级别
+            annotation_str = config_data[hole_number]
+            log_debug(f"get_config_growth_level: 孔位{hole_number}原始CFG字符串='{annotation_str}'", "CFG")
+            
+            parsed_annotation = self._parse_annotation_string(annotation_str, self.current_panoramic_id)
+            growth_level = parsed_annotation.get('growth_level', None)
+            
+            log_debug(f"get_config_growth_level: 孔位{hole_number}解析后生长级别='{growth_level}'", "CFG")
+            return growth_level
+            
+        except Exception as e:
+            log_error(f"获取CFG生长级别失败: {e}", "CFG")
+            return None
     
     def skip_current(self):
         """跳过当前切片 - 带性能监控"""
@@ -3488,10 +4311,16 @@ class PanoramicAnnotationGUI:
         """内部保存方法，不自动跳转
         save_type: "manual" (用户手动保存), "auto" (自动保存), "navigation" (导航时保存)
         """
+        log_info(f"*** 进入 save_current_annotation_internal 方法，类型: {save_type} ***", "SAVE")
         log_debug(f"进入 save_current_annotation_internal 方法，类型: {save_type}", "SAVE")
+        
+        # 检查基本条件
+        log_info(f"*** 检查条件: slice_files={self.slice_files is not None}, current_slice_index={self.current_slice_index}, len(slice_files)={len(self.slice_files) if self.slice_files else 0} ***", "SAVE")
+        
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
+            log_info(f"*** 早期退出: 没有切片文件或索引超出范围 ***", "SAVE")
             log_debug(f"早期退出: 没有切片文件或索引超出范围", "SAVE")
-            return
+            return False  # 明确返回False而不是None
 
         # 记录保存前的状态用于对比
         pre_save_state = self._capture_annotation_state()
@@ -3691,6 +4520,7 @@ class PanoramicAnnotationGUI:
                 # 自动保存和导航保存使用DEBUG级别
                 log_debug(f"自动保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}，类型: {save_type}", "SAVE")
 
+            log_info(f"*** save_current_annotation_internal 成功完成，返回 True ***", "SAVE")
             return True
             
         except Exception as e:
@@ -3698,6 +4528,7 @@ class PanoramicAnnotationGUI:
             error_msg = f"保存标注失败: {str(e)}"
             # 记录详细错误信息到日志
             log_error(f"{error_msg}\n{traceback.format_exc()}")
+            log_info(f"*** save_current_annotation_internal 异常，返回 False: {error_msg} ***", "SAVE")
             # 重新抛出异常，让上层处理
             raise Exception(error_msg)
     
@@ -3967,174 +4798,6 @@ class PanoramicAnnotationGUI:
 
         # 刷新显示
         self.root.update_idletasks()
-    
-    def get_annotation_status_text(self):
-        """获取标注状态文本，包含日期时间和CFG信息"""
-        # 获取CFG配置信息
-        config_data = self.get_current_panoramic_config()
-        cfg_growth_level = None
-        if config_data and self.current_hole_number in config_data:
-            cfg_growth_level = config_data[self.current_hole_number]
-
-        # 检查当前视图模式
-        if hasattr(self, 'current_view_mode') and self.current_view_mode == ViewMode.MODEL:
-            # 模型视图模式：优先显示人工标注状态，如果没有标注则显示CFG信息
-            existing_ann = self.current_dataset.get_annotation_by_hole(
-                self.current_panoramic_id,
-                self.current_hole_number
-            )
-
-            if existing_ann:
-                # 检查是否为增强标注
-                has_enhanced = (hasattr(existing_ann, 'enhanced_data') and
-                              existing_ann.enhanced_data and
-                              existing_ann.annotation_source == 'enhanced_manual')
-
-                if has_enhanced:
-                    # 增强标注 - 显示已标注状态，包含CFG信息
-                    annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
-
-                    # 优先尝试从标注对象获取保存的时间戳
-                    if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                        try:
-                            import datetime
-                            if isinstance(existing_ann.timestamp, str):
-                                # 处理ISO格式时间戳
-                                saved_timestamp = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                            else:
-                                saved_timestamp = existing_ann.timestamp
-
-                            # 同步到内存缓存
-                            self.last_annotation_time[annotation_key] = saved_timestamp
-                            datetime_str = saved_timestamp.strftime("%m-%d %H:%M:%S")
-
-                            # 包含CFG信息
-                            if cfg_growth_level:
-                                status_text = f"cfg-{cfg_growth_level} 已标注 ({datetime_str})"
-                            else:
-                                status_text = f"已标注 ({datetime_str})"
-
-                            log_debug(f"使用保存的时间戳: {datetime_str}", "STATUS")
-                            return status_text
-                        except Exception as e:
-                            log_error(f"解析保存的时间戳失败: {e}", "TIMESTAMP")
-
-                    # 如果标注对象中没有时间戳，尝试从内存缓存获取
-                    if annotation_key in self.last_annotation_time:
-                        import datetime
-                        datetime_str = self.last_annotation_time[annotation_key].strftime("%m-%d %H:%M:%S")
-
-                        # 包含CFG信息
-                        if cfg_growth_level:
-                            status_text = f"cfg-{cfg_growth_level} 已标注 ({datetime_str})"
-                        else:
-                            status_text = f"已标注 ({datetime_str})"
-
-                        log_debug(f"使用内存缓存的时间戳: {datetime_str}", "STATUS")
-                        return status_text
-
-                    # 如果都没有时间戳，显示基本状态
-                    if cfg_growth_level:
-                        status_text = f"cfg-{cfg_growth_level} 已标注"
-                    else:
-                        status_text = "已标注"
-                    log_debug(f"无时间戳信息，显示基本状态", "STATUS")
-                    return status_text
-                else:
-                    # 配置导入或其他类型 - 显示为配置导入状态
-                    if cfg_growth_level:
-                        return f"cfg-{cfg_growth_level} 配置导入"
-                    else:
-                        return "配置导入"
-            else:
-                # 无标注时显示CFG信息或模型预测状态
-                if cfg_growth_level:
-                    return f"cfg-{cfg_growth_level} 未标注"
-                else:
-                    # 没有CFG配置时显示模型预测状态
-                    if hasattr(self, 'hole_manager') and self.hole_manager:
-                        if self.hole_manager.has_hole_suggestion(self.current_hole_number):
-                            return "模型预测"
-                        else:
-                            return "无模型预测"
-                    else:
-                        return "模型数据未加载"
-
-        else:
-            # 人工视图模式：显示人工标注状态，集成CFG信息，不显示"配置导入"
-            existing_ann = self.current_dataset.get_annotation_by_hole(
-                self.current_panoramic_id,
-                self.current_hole_number
-            )
-
-            if existing_ann:
-                # 检查是否为增强标注
-                has_enhanced = (hasattr(existing_ann, 'enhanced_data') and
-                              existing_ann.enhanced_data and
-                              existing_ann.annotation_source == 'enhanced_manual')
-
-                if has_enhanced:
-                    # 增强标注 - 显示已标注状态，包含CFG信息
-                    annotation_key = f"{self.current_panoramic_id}_{self.current_hole_number}"
-
-                    # 优先尝试从标注对象获取保存的时间戳
-                    if hasattr(existing_ann, 'timestamp') and existing_ann.timestamp:
-                        try:
-                            import datetime
-                            if isinstance(existing_ann.timestamp, str):
-                                # 处理ISO格式时间戳
-                                saved_timestamp = datetime.datetime.fromisoformat(existing_ann.timestamp.replace('Z', '+00:00'))
-                            else:
-                                saved_timestamp = existing_ann.timestamp
-
-                            # 同步到内存缓存
-                            self.last_annotation_time[annotation_key] = saved_timestamp
-                            datetime_str = saved_timestamp.strftime("%m-%d %H:%M:%S")
-
-                            # 包含CFG信息
-                            if cfg_growth_level:
-                                status_text = f"cfg-{cfg_growth_level} 已标注 ({datetime_str})"
-                            else:
-                                status_text = f"已标注 ({datetime_str})"
-
-                            log_debug(f"使用保存的时间戳: {datetime_str}", "STATUS")
-                            return status_text
-                        except Exception as e:
-                            log_error(f"解析保存的时间戳失败: {e}", "TIMESTAMP")
-
-                    # 如果标注对象中没有时间戳，尝试从内存缓存获取
-                    if annotation_key in self.last_annotation_time:
-                        import datetime
-                        datetime_str = self.last_annotation_time[annotation_key].strftime("%m-%d %H:%M:%S")
-
-                        # 包含CFG信息
-                        if cfg_growth_level:
-                            status_text = f"cfg-{cfg_growth_level} 已标注 ({datetime_str})"
-                        else:
-                            status_text = f"已标注 ({datetime_str})"
-
-                        log_debug(f"使用内存缓存的时间戳: {datetime_str}", "STATUS")
-                        return status_text
-
-                    # 如果都没有时间戳，显示基本状态
-                    if cfg_growth_level:
-                        status_text = f"cfg-{cfg_growth_level} 已标注"
-                    else:
-                        status_text = "已标注"
-                    log_debug(f"无时间戳信息，显示基本状态", "STATUS")
-                    return status_text
-                else:
-                    # 配置导入或其他类型 - 显示CFG信息，不显示"配置导入"
-                    if cfg_growth_level:
-                        return f"cfg-{cfg_growth_level} 配置导入"
-                    else:
-                        return "配置导入"
-            else:
-                # 无标注时显示CFG信息
-                if cfg_growth_level:
-                    return f"cfg-{cfg_growth_level} 未标注"
-                else:
-                    return "无CFG"
     
     def update_progress(self):
         """更新进度显示"""
@@ -4629,9 +5292,9 @@ class PanoramicAnnotationGUI:
             )
             if existing_ann:
                 state['existing_annotation'] = {
-                    'growth_level': existing_ann.growth_level,
-                    'microbe_type': existing_ann.microbe_type,
-                    'interference_factors': existing_ann.interference_factors,
+                    'growth_level': getattr(existing_ann, 'growth_level', 'negative'),
+                    'microbe_type': getattr(existing_ann, 'microbe_type', 'bacteria'),
+                    'interference_factors': getattr(existing_ann, 'interference_factors', []),
                     'annotation_source': getattr(existing_ann, 'annotation_source', 'unknown'),
                     'timestamp': getattr(existing_ann, 'timestamp', None),
                     'has_enhanced_data': hasattr(existing_ann, 'enhanced_data') and bool(existing_ann.enhanced_data)
@@ -5112,10 +5775,12 @@ class PanoramicAnnotationGUI:
             log_error(f"处理视图模式变更失败: {str(e)}", "VIEW_MODE")
     
     def _load_model_view_data(self):
-        """加载模型视图数据 - 显示模型预测结果"""
+        """加载模型视图数据 - 显示模型预测结果（符合文档v2.1策略）"""
         try:
+            # 策略：模型视图下优先显示模型预测，无模型预测时降级到CFG或默认
             if not hasattr(self, 'hole_manager') or not self.hole_manager:
-                log_debug("hole_manager不存在，无法加载模型视图数据", "MODEL_VIEW")
+                log_debug("hole_manager不存在，降级到CFG/默认设置", "MODEL_VIEW")
+                self._load_fallback_data_for_model_view()
                 return
 
             suggestion = self.hole_manager.get_hole_suggestion(self.current_hole_number)
@@ -5202,13 +5867,44 @@ class PanoramicAnnotationGUI:
                     except Exception as e:
                         log_error(f"模型视图数据加载失败: {e}", "MODEL_VIEW")
             else:
-                log_debug(f"当前孔位{self.current_hole_number}无模型预测结果", "MODEL_VIEW")
-                # 无预测结果时，重置面板
-                if self.enhanced_annotation_panel:
-                    self.enhanced_annotation_panel.reset_annotation()
+                # 无模型预测，按照文档策略降级到CFG配置或默认设置
+                log_debug(f"当前孔位{self.current_hole_number}无模型预测结果，降级处理", "MODEL_VIEW")
+                self._load_fallback_data_for_model_view()
 
         except Exception as e:
             log_error(f"加载模型视图数据失败: {e}", "MODEL_VIEW")
+
+    def _load_fallback_data_for_model_view(self):
+        """模型视图下的降级数据加载：CFG配置 > 默认设置"""
+        try:
+            # 检查CFG配置
+            config_annotation = self._get_config_annotation(self.current_panoramic_id, self.current_hole_number)
+            if config_annotation:
+                log_debug(f"模型视图降级：应用CFG配置", "MODEL_VIEW")
+                self._apply_config_annotation(config_annotation)
+                return
+            
+            # 无CFG配置，应用默认设置
+            log_debug(f"模型视图降级：应用默认设置", "MODEL_VIEW")
+            default_microbe_type = self.get_default_microbe_type(self.current_panoramic_id)
+            self.current_microbe_type.set(default_microbe_type)
+            
+            if self.enhanced_annotation_panel:
+                # 重置为默认的阴性状态
+                self.enhanced_annotation_panel.current_growth_level.set('negative')
+                self.enhanced_annotation_panel.current_growth_pattern.set('clean')
+                self.enhanced_annotation_panel.current_confidence.set(1.0)
+                
+                # 重置干扰因素
+                for var in self.enhanced_annotation_panel.interference_vars.values():
+                    var.set(False)
+                
+                # 刷新界面
+                self.enhanced_annotation_panel.update_pattern_options()
+                self.root.update_idletasks()
+                
+        except Exception as e:
+            log_error(f"模型视图降级数据加载失败: {e}", "MODEL_VIEW")
 
 
     def update_hole_suggestion_display(self):
