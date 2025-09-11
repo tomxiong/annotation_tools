@@ -243,11 +243,43 @@ class ModelSuggestionImportService:
             interference_factors = features.get('interference_factors')
             confidence = features.get('confidence')
             
+            # 历史数据兼容性：将弱生长映射到阳性
+            if growth_level == 'weak_growth':
+                growth_level = 'positive'
+                log_debug(f"模型结果导入：弱生长映射到阳性", "MODEL_IMPORT")
+            
             # 处理growth_pattern
             if growth_pattern and not isinstance(growth_pattern, list):
                 growth_pattern = [str(growth_pattern)]
             elif growth_pattern:
                 growth_pattern = [str(p) for p in growth_pattern]
+                
+            # 历史数据兼容性：映射生长模式
+            if growth_pattern:
+                historical_pattern_mapping = {
+                    # 原弱生长模式映射到阳性模式
+                    'small_dots': 'center_dots',             # 小点状 -> 强中心点
+                    'light_gray': 'weak_scattered_pos',      # 淡灰色 -> 弱分散
+                    'irregular_areas': 'irregular',          # 不规则区域 -> 不规则
+                    
+                    # 原阳性模式映射到新名称
+                    'clustered': 'focal',                    # 聚集型 -> 聚焦
+                    'scattered': 'strong_scattered',         # 分散型 -> 强分散
+                    
+                    # 新增的兼容映射
+                    'center_weak_growth': 'center_dots',     # 原中心点弱生长 -> 强中心点
+                    'small_center_weak': 'litter_center_dots',  # 原小中心点弱 -> 弱中心点
+                }
+                
+                mapped_patterns = []
+                for pattern in growth_pattern:
+                    if pattern in historical_pattern_mapping:
+                        mapped_pattern = historical_pattern_mapping[pattern]
+                        mapped_patterns.append(mapped_pattern)
+                        log_debug(f"模型结果导入：生长模式映射 {pattern} -> {mapped_pattern}", "MODEL_IMPORT")
+                    else:
+                        mapped_patterns.append(pattern)
+                growth_pattern = mapped_patterns
                 
             # 处理interference_factors
             if interference_factors and not isinstance(interference_factors, list):

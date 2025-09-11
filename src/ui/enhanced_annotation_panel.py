@@ -27,30 +27,27 @@ except ImportError:
 # 简化的枚举类定义
 class GrowthLevel:
     NEGATIVE = "negative"
-    WEAK_GROWTH = "weak_growth"
     POSITIVE = "positive"
 
 
 class GrowthPattern:
     # 阴性模式
     CLEAN = "clean"              # 无干扰的阴性
-    
-    # 弱生长模式
-    SMALL_DOTS = "small_dots"    # 较小的点状弱生长
-    LIGHT_GRAY = "light_gray"    # 整体较淡的灰色弱生长
-    IRREGULAR_AREAS = "irregular_areas"  # 不规则淡区域弱生长
+    WEAK_SCATTERED = "weak_scattered"    # 微弱分散
+    LITTER_CENTER_DOTS = "litter_center_dots"  # 弱中心点
     
     # 阳性模式
-    CLUSTERED = "clustered"      # 聚集型生长
-    SCATTERED = "scattered"      # 分散型生长
-    HEAVY_GROWTH = "heavy_growth"  # 重度生长
-    FOCAL = "focal"              # 聚焦性生长（真菌）
-    DIFFUSE = "diffuse"          # 弥漫性生长（真菌）
+    FOCAL = "focal"              # 聚焦
+    STRONG_SCATTERED = "strong_scattered"  # 强分散
+    HEAVY_GROWTH = "heavy_growth"  # 重度
+    CENTER_DOTS = "center_dots"  # 强中心点
+    WEAK_SCATTERED_POS = "weak_scattered_pos"  # 弱分散
+    IRREGULAR = "irregular"      # 不规则
     
-    # 系统默认模式（可区分的默认值）
-    DEFAULT_POSITIVE = "default_positive"    # 阳性系统默认（区分于手动选择）
-    DEFAULT_WEAK = "default_weak_growth"     # 弱生长系统默认（区分于手动选择）
-    DEFAULT_NEGATIVE = "clean"               # 阴性系统默认（与clean相同，因为阴性本身就是清亮）
+    # 真菌专用阳性模式
+    DIFFUSE = "diffuse"          # 弥散（真菌）
+    FILAMENTOUS_NON_FUSED = "filamentous_non_fused"  # 丝状非融合
+    FILAMENTOUS_FUSED = "filamentous_fused"          # 丝状融合
 
 class FeatureCombination:
     def __init__(self, growth_level=GrowthLevel.NEGATIVE, growth_pattern=GrowthPattern.CLEAN, 
@@ -105,17 +102,14 @@ class FeatureCombination:
         这些默认值与手动选择的模式不同，可以让用户区分系统生成和手动选择
         
         Args:
-            growth_level: 生长级别 ('positive', 'weak_growth', 'negative')
+            growth_level: 生长级别 ('positive', 'negative')
             
         Returns:
             可区分的默认模式字符串
         """
         if growth_level == "positive":
-            # 阳性默认为专用默认模式，区分于手动的clustered/scattered/heavy_growth
+            # 阳性默认为专用默认模式，区分于手动的聚焦、强分散、重度等
             return GrowthPattern.DEFAULT_POSITIVE
-        elif growth_level == "weak_growth":
-            # 弱生长默认为专用默认模式，区分于手动的small_dots/light_gray/irregular_areas
-            return GrowthPattern.DEFAULT_WEAK
         else:  # negative
             # 阴性默认为清亮（阴性本身就应该是清亮的）
             return GrowthPattern.DEFAULT_NEGATIVE
@@ -210,8 +204,6 @@ class EnhancedAnnotationPanel:
         
         ttk.Radiobutton(level_frame, text="阴性", variable=self.current_growth_level, 
                        value="negative", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(level_frame, text="弱生长", variable=self.current_growth_level, 
-                       value="weak_growth", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(level_frame, text="阳性", variable=self.current_growth_level, 
                        value="positive", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
     
@@ -220,43 +212,57 @@ class EnhancedAnnotationPanel:
         pattern_frame = ttk.LabelFrame(self.main_frame, text="生长模式")
         pattern_frame.pack(fill=tk.X, padx=5, pady=2)
         
-        # 系统默认模式（放在前面，优先显示）
-        default_patterns = [
-            ("阳性", "default_positive"),
-            ("弱生长", "default_weak_growth")
+        # 阴性模式
+        negative_patterns = [
+            ("清亮", GrowthPattern.CLEAN),
+            ("微弱分散", GrowthPattern.WEAK_SCATTERED),
+            ("弱中心点", GrowthPattern.LITTER_CENTER_DOTS),
+            ("丝状非融合", GrowthPattern.FILAMENTOUS_NON_FUSED)  # 真菌阴性专用
         ]
         
-        # 手动选择模式（放在后面）
-        manual_patterns = [
-            ("清亮", "clean"),
-            ("中心小点", "small_dots"),
-            ("浅灰色", "light_gray"),
-            ("不规则区域", "irregular_areas"),
-            ("聚集型", "clustered"),
-            ("分散型", "scattered"),
-            ("重度生长", "heavy_growth"),
-            ("聚焦性", "focal"),
-            ("弥漫性", "diffuse")
+        # 阳性模式（通用）
+        positive_patterns = [
+            ("聚焦性", GrowthPattern.FOCAL),
+            ("强分散", GrowthPattern.STRONG_SCATTERED),
+            ("重度", GrowthPattern.HEAVY_GROWTH),
+            ("强中心点", GrowthPattern.CENTER_DOTS),
+            ("弱分散", GrowthPattern.WEAK_SCATTERED_POS),
+            ("不规则", GrowthPattern.IRREGULAR)
         ]
         
-        # 创建系统默认按钮（优先显示，使用特殊标识）
-        for text, value in default_patterns:
-            btn = ttk.Radiobutton(pattern_frame, text=f"[默认] {text}", variable=self.current_growth_pattern, 
-                                 value=value, command=self.on_pattern_change)
-            btn.pack(side=tk.LEFT, padx=2)
-            self.pattern_buttons[value] = btn
-            log_debug(f"创建默认模式按钮: {text} -> {value}", "UI")
+        # 真菌专用阳性模式
+        fungal_positive_patterns = [
+            ("弥散", GrowthPattern.DIFFUSE),
+            ("丝状融合", GrowthPattern.FILAMENTOUS_FUSED)  # 真菌阳性专用
+        ]
         
-        # 添加分隔线
-        #separator = ttk.Separator(pattern_frame, orient='vertical')
-        #separator.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+        # 创建按钮容器，支持换行布局
+        button_container = ttk.Frame(pattern_frame)
+        button_container.pack(fill=tk.X, padx=2, pady=2)
         
-        # 创建手动选择按钮
-        for text, value in manual_patterns:
-            btn = ttk.Radiobutton(pattern_frame, text=text, variable=self.current_growth_pattern, 
-                                 value=value, command=self.on_pattern_change)
-            btn.pack(side=tk.LEFT, padx=2)
-            self.pattern_buttons[value] = btn
+        # 配置网格权重，使按钮容器能够自适应宽度
+        button_container.grid_columnconfigure(0, weight=1)
+        button_container.grid_columnconfigure(1, weight=1)
+        button_container.grid_columnconfigure(2, weight=1)
+        button_container.grid_columnconfigure(3, weight=1)
+        
+        # 创建所有按钮
+        all_patterns = negative_patterns + positive_patterns + fungal_positive_patterns
+        row = 0
+        col = 0
+        max_cols = 4  # 每行最多4个按钮，确保在较窄界面上也能完整显示
+        
+        for text, pattern_value in all_patterns:
+            btn = ttk.Radiobutton(button_container, text=text, variable=self.current_growth_pattern, 
+                                 value=pattern_value, command=self.on_pattern_change)
+            btn.grid(row=row, column=col, padx=2, pady=1, sticky='ew')  # 改为ew，水平填充
+            self.pattern_buttons[pattern_value] = btn
+            log_debug(f"创建模式按钮: {text} -> {pattern_value}", "UI")
+            
+            col += 1
+            if col >= max_cols:
+                col = 0
+                row += 1
         
         log_debug(f"所有模式按钮已创建: {list(self.pattern_buttons.keys())}", "UI")
     
@@ -314,28 +320,65 @@ class EnhancedAnnotationPanel:
         growth_level = self.current_growth_level.get()
         microbe_type = self.current_microbe_type.get()
         
-        # 定义每个生长级别对应的模式选项（默认值排在第一位）
-        pattern_options = {
-            "negative": ["clean"],
-            "weak_growth": ["default_weak_growth", "small_dots", "light_gray", "irregular_areas"],
-            "positive": (["default_positive", "clustered", "scattered", "heavy_growth"] if microbe_type == "bacteria" 
-                       else ["default_positive", "focal", "diffuse", "heavy_growth"])
-        }
+        # 定义每个生长级别对应的模式选项
+        if growth_level == "negative":
+            available_patterns = [
+                GrowthPattern.CLEAN,
+                GrowthPattern.WEAK_SCATTERED,
+                GrowthPattern.LITTER_CENTER_DOTS
+            ]
+            
+            # 为真菌添加阴性专用模式
+            if microbe_type == "fungi":
+                available_patterns.append(GrowthPattern.FILAMENTOUS_NON_FUSED)
+                
+        elif growth_level == "positive":
+            # 基础阳性模式
+            available_patterns = [
+                GrowthPattern.FOCAL,
+                GrowthPattern.STRONG_SCATTERED,
+                GrowthPattern.HEAVY_GROWTH,
+                GrowthPattern.CENTER_DOTS,
+                GrowthPattern.WEAK_SCATTERED_POS,
+                GrowthPattern.IRREGULAR
+            ]
+            
+            # 为真菌添加阳性专用模式
+            if microbe_type == "fungi":
+                available_patterns.extend([
+                    GrowthPattern.DIFFUSE,
+                    GrowthPattern.FILAMENTOUS_FUSED
+                ])
+        else:
+            available_patterns = []
         
-        # 获取当前级别的可用选项
-        available_patterns = pattern_options.get(growth_level, [])
-        log_debug(f"生长级别: {growth_level}, 可用模式: {available_patterns}, 保持当前选择: {preserve_current}", "UI")
+        log_debug(f"生长级别: {growth_level}, 微生物类型: {microbe_type}, 可用模式: {[p for p in available_patterns]}, 保持当前选择: {preserve_current}", "UI")
         
-        # 更新按钮显示状态
+        # 更新按钮显示状态 - 重新布局可见按钮
         visible_count = 0
+        visible_row = 0
+        visible_col = 0
+        max_cols = 4  # 每行最多4个按钮，确保在较窄界面上也能完整显示
+        
+        # 首先隐藏所有按钮
+        for pattern_value, btn in self.pattern_buttons.items():
+            btn.grid_remove()
+        
+        # 然后只显示可用的按钮，并重新排列布局
         for pattern_value, btn in self.pattern_buttons.items():
             if pattern_value in available_patterns:
                 btn.config(state="normal")
-                btn.pack(side=tk.LEFT, padx=5)
+                # 重新计算网格位置，确保连续排列
+                btn.grid(row=visible_row, column=visible_col, padx=2, pady=1, sticky='ew')  # 改为ew，水平填充
                 visible_count += 1
+                
+                # 更新下一个位置
+                visible_col += 1
+                if visible_col >= max_cols:
+                    visible_col = 0
+                    visible_row += 1
             else:
                 btn.config(state="disabled")
-                btn.pack_forget()  # 隐藏不可用的选项
         
         log_debug(f"显示模式按钮数量: {visible_count}/{len(self.pattern_buttons)}", "UI")
         
@@ -345,8 +388,9 @@ class EnhancedAnnotationPanel:
             if available_patterns:
                 current_pattern = self.current_growth_pattern.get()
                 if current_pattern not in available_patterns:
-                    log_debug(f"当前模式 {current_pattern} 不在可用列表中，重置为 {available_patterns[0]}", "UI")
-                    self.current_growth_pattern.set(available_patterns[0])
+                    default_pattern = available_patterns[0]
+                    log_debug(f"当前模式 {current_pattern} 不在可用列表中，重置为 {default_pattern}", "UI")
+                    self.current_growth_pattern.set(default_pattern)
             else:
                 self.current_growth_pattern.set("")
         else:
@@ -366,6 +410,8 @@ class EnhancedAnnotationPanel:
     
     def on_microbe_type_change(self):
         """微生物类型改变"""
+        self.update_pattern_options()  # 更新生长模式选项
+        self.update_interference_options()  # 更新干扰因素选项
         if self.on_annotation_change:
             self.on_annotation_change(self.get_current_feature_combination())
     
@@ -601,7 +647,13 @@ class EnhancedAnnotationPanel:
         self.current_growth_level.set(growth_level)
         
         # 获取可区分的默认模式
-        default_pattern = FeatureCombination.get_distinguishable_default_pattern(growth_level)
+        if growth_level == "positive":
+            default_pattern = GrowthPattern.FOCAL  # 聚焦性作为阳性默认
+        elif growth_level == "negative":
+            default_pattern = GrowthPattern.CLEAN  # 清亮作为阴性默认
+        else:
+            default_pattern = GrowthPattern.CLEAN
+        
         self.current_growth_pattern.set(default_pattern)
         
         # 根据参数决定是否重置干扰因素
@@ -729,8 +781,11 @@ class EnhancedAnnotationPanel:
             # 映射生长级别
             if data.get('has_bacteria', False):
                 bacteria_type = data.get('bacteria_type', 'positive')
-                if bacteria_type in ['negative', 'weak_growth', 'positive']:
+                if bacteria_type in ['negative', 'positive']:
                     self.current_growth_level.set(bacteria_type)
+                elif bacteria_type == 'weak_growth':
+                    # 弱生长映射到阳性
+                    self.current_growth_level.set('positive')
                 else:
                     self.current_growth_level.set('positive')
             else:
@@ -926,8 +981,11 @@ class EnhancedAnnotationPanel:
                 if hasattr(slice_annotation, 'has_bacteria') and slice_annotation.has_bacteria:
                     if hasattr(slice_annotation, 'bacteria_type'):
                         bacteria_type = slice_annotation.bacteria_type
-                        if bacteria_type in ['negative', 'weak_growth', 'positive']:
+                        if bacteria_type in ['negative', 'positive']:
                             growth_level = bacteria_type
+                        elif bacteria_type == 'weak_growth':
+                            # 弱生长映射到阳性
+                            growth_level = 'positive'
                         else:
                             growth_level = 'positive'  # 默认为阳性
                     else:
@@ -1045,12 +1103,12 @@ class EnhancedAnnotationPanel:
                  # 映射模型建议的生长级别到正确的值
                  growth_level_mapping = {
                      'low': 'negative',
-                     'medium': 'weak_growth', 
+                     'medium': 'positive',  # 中等映射到阳性
                      'high': 'positive',
                      'negative': 'negative',
-                     'weak_growth': 'weak_growth',
+                     'weak_growth': 'positive',  # 弱生长映射到阳性
                      'positive': 'positive',
-                     'weak': 'weak_growth',
+                     'weak': 'positive',  # 弱映射到阳性
                      'strong': 'positive'
                  }
                  
@@ -1111,7 +1169,7 @@ class EnhancedAnnotationPanel:
                      log_debug(f"设置生长模式: {pattern} -> {mapped_pattern}", "MODEL")
                      log_debug(f"设置后current_growth_pattern: {self.current_growth_pattern.get()}", "MODEL")
                      pattern_set = True
-                 elif pattern in ['clean', 'small_dots', 'light_gray', 'irregular_areas', 'heavy_growth', 'focal', 'diffuse', 'default_positive', 'default_weak_growth']:
+                 elif pattern in ['clean', 'small_dots', 'light_gray', 'irregular_areas', 'heavy_growth', 'focal', 'diffuse', 'default_positive']:
                      # 如果已经是正确的值，直接设置
                      self.current_growth_pattern.set(pattern)
                      log_debug(f"直接设置生长模式: {pattern}", "MODEL")

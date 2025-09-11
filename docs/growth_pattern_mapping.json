@@ -1,0 +1,55 @@
+{
+  "version": "1.2.0.0",
+  "updated": "2025-09-11",
+  "description": "生长模式分类映射，用于模型训练",
+  "classification_standard": {
+    "principle": "阴性/阳性二分法，基于临床药敏判断",
+    "positive": "药物耐药，临床判断为耐药",
+    "negative": "药物敏感，临床判断为敏感"
+  },
+  "bacteria_patterns": {
+    "positive": {
+      "聚焦性": "bacteria_positive_focused",
+      "强分散": "bacteria_positive_strong_scattered",
+      "重度": "bacteria_positive_heavy",
+      "强中心点": "bacteria_positive_strong_central",
+      "弱分散": "bacteria_positive_weak_scattered",
+      "不规则": "bacteria_positive_irregular"
+    },
+    "negative": {
+      "清亮": "bacteria_negative_clear",
+      "微弱分散": "bacteria_negative_weak_scattered",
+      "弱中心点": "bacteria_negative_weak_central"
+    }
+  },
+  "fungi_patterns": {
+    "positive": {
+      "弥散": "fungi_positive_diffuse",
+      "丝状融合": "fungi_positive_filamentous_fused"
+    },
+    "negative": {
+      "丝状非融合": "fungi_negative_filamentous_non_fused"
+    }
+  },
+  "key_changes": [
+    "真菌丝状融合：从阴性改为阳性（菌丝融合表示生长旺盛）",
+    "真菌丝状非融合：从阳性改为阴性（菌丝分离表示生长受限）",
+    "弱生长概念细分：区分阴性微弱分散和阳性弱分散"
+  ],
+  "training_features": {
+    "positive_indicators": [
+      "生长密集",
+      "颜色深",
+      "边界清晰",
+      "分布广泛",
+      "形态完整"
+    ],
+    "negative_indicators": [
+      "生长稀疏",
+      "颜色浅",
+      "透明度高",
+      "分布局限",
+      "形态受抑制"
+    ]
+  }
+}

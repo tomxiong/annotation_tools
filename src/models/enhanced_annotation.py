@@ -27,7 +27,6 @@ except ImportError:
 class GrowthLevel(Enum):
     """生长级别枚举"""
     NEGATIVE = "negative"
-    WEAK_GROWTH = "weak_growth"
     POSITIVE = "positive"
 
 
@@ -43,18 +42,21 @@ class GrowthPattern(Enum):
     """生长模式枚举"""
     # 阴性模式
     CLEAN = "clean"              # 无干扰的阴性
-    
-    # 弱生长模式
-    SMALL_DOTS = "small_dots"    # 较小的点状弱生长
-    LIGHT_GRAY = "light_gray"    # 整体较淡的灰色弱生长
-    IRREGULAR_AREAS = "irregular_areas"  # 不规则淡区域弱生长
+    WEAK_SCATTERED = "weak_scattered"  # 微弱分散
+    LITTER_CENTER_DOTS = "litter_center_dots"  # 弱中心点
     
     # 阳性模式
-    CLUSTERED = "clustered"      # 聚集型生长
-    SCATTERED = "scattered"      # 分散型生长
+    FOCAL = "focal"              # 聚焦性生长
+    STRONG_SCATTERED = "strong_scattered"  # 强分散
     HEAVY_GROWTH = "heavy_growth"  # 重度生长
-    FOCAL = "focal"              # 聚焦性生长（真菌）
-    DIFFUSE = "diffuse"          # 弥漫性生长（真菌）
+    CENTER_DOTS = "center_dots"  # 强中心点
+    WEAK_SCATTERED_POS = "weak_scattered_pos"  # 弱分散（阳性）
+    IRREGULAR = "irregular"      # 不规则
+    
+    # 真菌专用阳性模式
+    DIFFUSE = "diffuse"          # 弥散（真菌）
+    FILAMENTOUS_NON_FUSED = "filamentous_non_fused"  # 丝状非融合
+    FILAMENTOUS_FUSED = "filamentous_fused"  # 丝状融合
 
 
 @dataclass
@@ -90,10 +92,72 @@ class FeatureCombination:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FeatureCombination':
-        """从字典创建"""
-        # 处理干扰因素 - 支持中文和英文值
+        """从字典创建，支持历史数据兼容"""
+        
+        # 1. 处理历史生长级别映射
+        growth_level_str = data.get('growth_level', 'negative')
+        
+        # 处理弱生长级别映射到阳性
+        if growth_level_str == 'weak_growth':
+            growth_level = GrowthLevel.POSITIVE
+            # 如果原来是弱生长，默认模式映射到强中心点
+            default_pattern = 'center_dots'
+        else:
+            try:
+                growth_level = GrowthLevel(growth_level_str)
+                default_pattern = None
+            except ValueError:
+                growth_level = GrowthLevel.NEGATIVE
+                default_pattern = None
+        
+        # 2. 处理历史生长模式映射
+        pattern_str = data.get('growth_pattern')
+        growth_pattern = None
+        
+        if pattern_str:
+            # 历史模式映射表
+            historical_pattern_mapping = {
+                # 弱生长模式映射
+                'small_dots': 'center_dots',             # 小点状 -> 强中心点（阳性）
+                'light_gray': 'weak_scattered_pos',      # 淡灰色 -> 弱分散（阳性）
+                'irregular_areas': 'irregular',          # 不规则区域 -> 不规则
+                
+                # 阳性模式映射
+                'clustered': 'focal',                    # 聚集 -> 聚焦
+                'scattered': 'strong_scattered',         # 分散 -> 强分散
+                
+                # 其他兼容映射
+                'default_weak_growth': 'center_dots',    # 默认弱生长映射到强中心点
+                'center_weak_growth': 'center_dots',     # 原中心点弱生长 -> 强中心点
+                'small_center_weak': 'litter_center_dots',  # 原小中心点弱 -> 弱中心点（阴性）
+            }
+            
+            # 尝试历史映射
+            mapped_pattern = historical_pattern_mapping.get(pattern_str, pattern_str)
+            
+            try:
+                growth_pattern = GrowthPattern(mapped_pattern)
+            except ValueError:
+                # 如果映射失败，使用默认模式
+                if default_pattern:
+                    try:
+                        growth_pattern = GrowthPattern(default_pattern)
+                    except ValueError:
+                        growth_pattern = None
+        elif default_pattern:
+            # 如果没有模式但有默认模式，使用默认模式
+            try:
+                growth_pattern = GrowthPattern(default_pattern)
+            except ValueError:
+                growth_pattern = None
+        
+        # 3. 处理干扰因素 - 支持中文和英文值
         interference_factors = set()
         for f in data.get('interference_factors', []):
+            # 跳过弱生长干扰因素（已废弃）
+            if f == 'weak_growth' or f == '微弱生长':
+                continue
+                
             try:
                 # 尝试直接创建枚举
                 interference_factors.add(InterferenceType(f))
@@ -124,30 +188,8 @@ class FeatureCombination:
                 else:
                     log_warning(f"未知的干扰因素: {f}")
         
-        # 处理生长模式 - 支持默认值映射
-        growth_pattern = None
-        if data.get('growth_pattern'):
-            pattern_str = data['growth_pattern']
-            try:
-                # 首先尝试直接创建枚举
-                growth_pattern = GrowthPattern(pattern_str)
-            except ValueError:
-                # 如果失败，处理特殊的默认值
-                default_pattern_mapping = {
-                    'default_positive': 'clustered',      # 默认阳性映射到聚集型
-                    'default_weak_growth': 'small_dots',  # 默认弱生长映射到小点状
-                }
-                if pattern_str in default_pattern_mapping:
-                    try:
-                        growth_pattern = GrowthPattern(default_pattern_mapping[pattern_str])
-                        log_debug(f"映射默认生长模式: {pattern_str} -> {default_pattern_mapping[pattern_str]}", "MAPPING")
-                    except ValueError:
-                        log_warning(f"无法映射默认生长模式: {pattern_str}")
-                else:
-                    log_warning(f"未知的生长模式: {pattern_str}")
-        
         return cls(
-            growth_level=GrowthLevel(data['growth_level']),
+            growth_level=growth_level,
             growth_pattern=growth_pattern,
             interference_factors=interference_factors,
             confidence=data.get('confidence', 1.0)
@@ -276,7 +318,6 @@ class EnhancedPanoramicAnnotation:
         # 基础生长级别
         growth_desc = {
             GrowthLevel.NEGATIVE: "阴性",
-            GrowthLevel.WEAK_GROWTH: "弱生长", 
             GrowthLevel.POSITIVE: "阳性"
         }
         desc_parts.append(growth_desc[self.feature_combination.growth_level])
@@ -461,18 +502,21 @@ class FeatureAnnotationRules:
         # 阴性组合
         (GrowthLevel.NEGATIVE, None): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.DEBRIS, InterferenceType.CONTAMINATION],
         (GrowthLevel.NEGATIVE, GrowthPattern.CLEAN): [],
-        
-        # 弱生长组合
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.SMALL_DOTS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.LIGHT_GRAY): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.DEBRIS],
-        (GrowthLevel.WEAK_GROWTH, GrowthPattern.IRREGULAR_AREAS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.NEGATIVE, GrowthPattern.WEAK_SCATTERED): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.NEGATIVE, GrowthPattern.LITTER_CENTER_DOTS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
         
         # 阳性组合
-        (GrowthLevel.POSITIVE, GrowthPattern.CLUSTERED): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
-        (GrowthLevel.POSITIVE, GrowthPattern.SCATTERED): [InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.FOCAL): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.STRONG_SCATTERED): [InterferenceType.ARTIFACTS],
         (GrowthLevel.POSITIVE, GrowthPattern.HEAVY_GROWTH): [InterferenceType.ARTIFACTS],
-        (GrowthLevel.POSITIVE, GrowthPattern.FOCAL): [InterferenceType.PORES, InterferenceType.ARTIFACTS],  # 真菌
-        (GrowthLevel.POSITIVE, GrowthPattern.DIFFUSE): [InterferenceType.ARTIFACTS]  # 真菌
+        (GrowthLevel.POSITIVE, GrowthPattern.CENTER_DOTS): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.WEAK_SCATTERED_POS): [InterferenceType.PORES, InterferenceType.ARTIFACTS, InterferenceType.DEBRIS],
+        (GrowthLevel.POSITIVE, GrowthPattern.IRREGULAR): [InterferenceType.PORES, InterferenceType.ARTIFACTS],
+        
+        # 真菌专用组合
+        (GrowthLevel.NEGATIVE, GrowthPattern.FILAMENTOUS_NON_FUSED): [InterferenceType.PORES, InterferenceType.ARTIFACTS],  # 丝状非融合是阴性
+        (GrowthLevel.POSITIVE, GrowthPattern.DIFFUSE): [InterferenceType.ARTIFACTS],
+        (GrowthLevel.POSITIVE, GrowthPattern.FILAMENTOUS_FUSED): [InterferenceType.PORES, InterferenceType.ARTIFACTS],  # 丝状融合是阳性
     }
     
     @classmethod
@@ -492,15 +536,29 @@ class FeatureAnnotationRules:
                                microbe_type: str) -> List[GrowthPattern]:
         """获取推荐的生长模式"""
         if growth_level == GrowthLevel.NEGATIVE:
-            return [GrowthPattern.CLEAN]
-        elif growth_level == GrowthLevel.WEAK_GROWTH:
-            return [GrowthPattern.SMALL_DOTS, GrowthPattern.LIGHT_GRAY, GrowthPattern.IRREGULAR_AREAS]
+            patterns = [GrowthPattern.CLEAN, GrowthPattern.WEAK_SCATTERED, GrowthPattern.LITTER_CENTER_DOTS]
+            # 为真菌添加阴性专用模式
+            if microbe_type == "fungi":
+                patterns.append(GrowthPattern.FILAMENTOUS_NON_FUSED)
+            return patterns
         elif growth_level == GrowthLevel.POSITIVE:
             if microbe_type == "bacteria":
-                return [GrowthPattern.CLUSTERED, GrowthPattern.SCATTERED, GrowthPattern.HEAVY_GROWTH]
+                return [
+                    GrowthPattern.FOCAL,
+                    GrowthPattern.STRONG_SCATTERED, 
+                    GrowthPattern.HEAVY_GROWTH,
+                    GrowthPattern.CENTER_DOTS,
+                    GrowthPattern.WEAK_SCATTERED_POS,
+                    GrowthPattern.IRREGULAR
+                ]
             else:  # fungi
-                return [GrowthPattern.FOCAL, GrowthPattern.DIFFUSE, GrowthPattern.HEAVY_GROWTH]
-        
+                return [
+                    GrowthPattern.FOCAL,
+                    GrowthPattern.STRONG_SCATTERED, 
+                    GrowthPattern.HEAVY_GROWTH,
+                    GrowthPattern.DIFFUSE,
+                    GrowthPattern.FILAMENTOUS_FUSED  # 丝状融合是阳性
+                ]
         return []
     
     @classmethod
@@ -523,7 +581,7 @@ class TrainingDataGenerator:
     def _create_label_encodings(self) -> Dict[str, int]:
         """创建标签编码映射"""
         # 基础三分类
-        base_labels = ['negative', 'weak_growth', 'positive']
+        base_labels = ['negative', 'positive']
         
         # 扩展标签（包含特征组合）
         extended_labels = []

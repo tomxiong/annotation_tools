@@ -4150,6 +4150,47 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             log_error(f"获取CFG生长级别失败: {e}", "CFG")
             return None
+
+    def get_cfg_display_text(self):
+        """获取CFG配置的显示文本，用于切片信息展示
+        
+        Returns:
+            str: CFG配置的显示文本，格式为"细菌|阳性"或"真菌|阴性"，如无配置则返回空字符串
+        """
+        try:
+            if not hasattr(self, 'current_panoramic_id') or not self.current_panoramic_id:
+                return ""
+            
+            if not hasattr(self, 'current_hole_number') or not self.current_hole_number:
+                return ""
+            
+            # 获取当前全景图的配置数据
+            config_data = self.get_current_panoramic_config()
+            if not config_data or self.current_hole_number not in config_data:
+                return ""
+            
+            # 解析标注字符串获取详细信息
+            annotation_str = config_data[self.current_hole_number]
+            parsed_annotation = self._parse_annotation_string(annotation_str, self.current_panoramic_id)
+            
+            # 获取微生物类型和生长级别
+            microbe_type = parsed_annotation.get('microbe_type', 'bacteria')
+            growth_level = parsed_annotation.get('growth_level', 'negative')
+            
+            # 转换为中文显示
+            microbe_text = "细菌" if microbe_type == "bacteria" else "真菌"
+            if growth_level == "positive":
+                level_text = "阳性"
+            elif growth_level == "negative":
+                level_text = "阴性"
+            else:
+                level_text = growth_level  # 其他情况直接显示原值
+            
+            return f"{microbe_text}|{level_text}"
+            
+        except Exception as e:
+            log_debug(f"获取CFG显示文本失败: {e}", "CFG")
+            return ""
     
     def skip_current(self):
         """跳过当前切片 - 带性能监控"""
@@ -4808,8 +4849,14 @@ class PanoramicAnnotationGUI:
         hole_label = self.hole_manager.get_hole_label(self.current_hole_number)
         annotation_status = self.get_annotation_status_text()
 
-        # 更新切片信息标签 - 只显示文件和孔位信息
-        slice_info_text = f"{current_file['filename']} - {hole_label}({self.current_hole_number})"
+        # 获取CFG配置信息用于显示
+        cfg_info_text = self.get_cfg_display_text()
+
+        # 更新切片信息标签 - 显示文件、孔位信息和CFG配置
+        if cfg_info_text:
+            slice_info_text = f"{current_file['filename']} - {hole_label}({self.current_hole_number}) | {cfg_info_text}"
+        else:
+            slice_info_text = f"{current_file['filename']} - {hole_label}({self.current_hole_number})"
         self.slice_info_label.config(text=slice_info_text)
 
         # 更新标注预览标签
@@ -6004,7 +6051,7 @@ class PanoramicAnnotationGUI:
             # 创建关于对话框窗口
             about_window = tk.Toplevel(self.root)
             about_window.title("操作指南")
-            about_window.geometry("650x550")
+            about_window.geometry("800x750")  # 增加尺寸以容纳更新日志
             about_window.resizable(True, True)
             about_window.transient(self.root)
             about_window.grab_set()
@@ -6105,13 +6152,102 @@ class PanoramicAnnotationGUI:
 • Delete: 删除选中的标注框
 • 方向键: 孔位导航
 • 1/2/3: 设置生长级别
-• 空格: 保存并下一个"""
+• 空格: 保存并下一个
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【生长级别与模式详解】
+
+▶ 阴性模式（药物敏感，生长抑制）
+• 清亮: 完全抑制，无可见生长
+• 微弱分散: 极少量散在生长点，生长明显受抑制
+• 弱中心点: 仅在中心区域有少量微弱生长点
+
+▶ 阳性模式（药物耐药，生长明显）
+• 聚焦性: 集中密集生长，形成聚焦病灶
+• 强分散: 广泛分散的密集生长点
+• 重度: 大面积密集生长，生长旺盛
+• 强中心点: 中心区域密集生长点，生长活跃
+• 弱分散: 分散但可见的生长点，数量相对较少
+• 不规则: 不规则形状的生长区域
+
+▶ 真菌专用模式
+• 弥散: 真菌呈弥散性生长（阳性）
+• 丝状非融合: 菌丝分离，生长受限（阴性）
+• 丝状融合: 菌丝融合，生长旺盛（阳性）
+
+【关键模式对比分析】
+
+★ 强中心点 vs 弱中心点的判别要点：
+• 阳性+强中心点: 中心区域生长密集，颜色深，数量多，边界清晰
+• 阴性+弱中心点: 中心区域生长稀疏，颜色浅，数量少，生长受抑制
+
+★ 弱分散 vs 微弱分散的判别要点：
+• 阳性+弱分散: 分散生长但仍可见明显的菌落点，显示一定的生长能力
+• 阴性+微弱分散: 极少量散在点，生长明显受到药物抑制
+
+【弱生长的医学意义】
+
+传统的"弱生长"概念实际上代表了阳性与阴性之间的临界状态，但在临床判断中：
+
+✓ 倾向阳性的弱生长表现：
+• 虽然生长量少，但菌落形态相对完整
+• 分散分布但生长点清晰可辨
+• 表明微生物具有一定的药物耐受性
+• 临床判断为耐药，归类为"阳性"
+
+✓ 倾向阴性的弱生长表现：
+• 生长点极其微弱，几乎不可见
+• 生长受到明显抑制，形态不完整
+• 表明药物对微生物有明显抑制作用
+• 临床判断为敏感，归类为"阴性"
+
+这种精确的二分法有助于：
+• 明确临床用药决策
+• 避免模糊判断造成的治疗延误
+• 提高药敏检测的临床指导价值
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【版本更新日志】
+
+▶ v1.2.0.0 (2025年9月11日)
+• 💊 医学标准升级：修正真菌生长模式分类
+  - 丝状融合：改为阳性（菌丝融合表示生长旺盛，耐药）
+  - 丝状非融合：改为阴性（菌丝分离表示生长受限，敏感）
+  - 优化阴性/阳性二分法，确保临床指导价值
+
+• 🧬 CFG配置信息显示：在切片信息中增加微生物类型和生长级别显示
+  - 自动识别文件名前缀判断微生物类型（FG=真菌，其他=细菌）
+  - 实时显示配置文件中的生长级别信息
+  - 提升标注信息的完整性和可追溯性
+
+• 🖥️ 界面布局优化：解决生长模式选择按钮宽度显示问题
+  - 改用响应式网格布局，确保所有模式按钮完整显示
+  - 优化真菌模式切换时的界面刷新机制
+  - 提高用户操作体验
+
+• 📖 操作指南完善：新增详细生长模式分类说明
+  - 补充真菌专用模式的医学解释
+  - 增加关键模式对比分析
+  - 详细说明弱生长的临床判断标准
+
+• 🧹 代码优化：清理调试脚本，更新映射关系
+  - 生成模型训练用的分类映射文档
+  - 建立完整的医学标准验证机制
+  - 为后续AI模型训练提供准确分类指导
+
+▶ v1.1.0.0 (之前版本)
+• 基础标注功能
+• 全景图像显示
+• 孔位导航
+• 模型建议导入"""
             
             # 创建文本框显示指南内容
             text_widget = tk.Text(scrollable_frame, 
                                  wrap=tk.WORD, 
-                                 width=70, 
-                                 height=25,
+                                 width=75, 
+                                 height=30,
                                  font=("Arial", 10),
                                  bg="#f8f9fa",
                                  relief=tk.FLAT,
