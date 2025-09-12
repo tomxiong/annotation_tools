@@ -150,7 +150,6 @@ class PanoramicImageService:
         colors = {
             'current': '#FF0000',      # 红色 - 当前孔位
             'negative': '#00FF00',     # 绿色 - 阴性
-            'weak_growth': '#FFFF00',  # 黄色 - 弱生长
             'positive': '#FF8000',     # 橙色 - 阳性
             'unannotated': '#CCCCCC'   # 灰色 - 未标注
         }

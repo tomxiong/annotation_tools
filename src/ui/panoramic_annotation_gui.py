@@ -679,8 +679,6 @@ class PanoramicAnnotationGUI:
         
         ttk.Radiobutton(growth_buttons_frame, text="阴性", variable=self.current_growth_level, 
                        value="negative", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(growth_buttons_frame, text="弱生长", variable=self.current_growth_level, 
-                       value="weak_growth", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(growth_buttons_frame, text="阳性", variable=self.current_growth_level, 
                        value="positive", command=self.on_growth_level_change).pack(side=tk.LEFT, padx=5)
         
@@ -742,12 +740,13 @@ class PanoramicAnnotationGUI:
 
                     # 生长级别
                     if hasattr(suggestion, 'growth_level') and suggestion.growth_level:
+                        # 映射弱生长到阳性
+                        mapped_level = self._map_growth_level_for_display(suggestion.growth_level)
                         growth_map = {
                             'negative': '阴性',
-                            'weak_growth': '弱生长',
                             'positive': '阳性'
                         }
-                        growth_text = growth_map.get(suggestion.growth_level, suggestion.growth_level)
+                        growth_text = growth_map.get(mapped_level, mapped_level)
                         details.append(growth_text)
 
                     # 生长模式
@@ -763,7 +762,7 @@ class PanoramicAnnotationGUI:
                             'focal': '聚焦性',
                             'diffuse': '弥漫性',
                             'default_positive': '阳性默认',
-                            'default_weak_growth': '弱生长默认'
+                            'default_weak_growth': '阳性默认'  # 弱生长默认映射为阳性默认
                         }
                         if isinstance(suggestion.growth_pattern, list):
                             pattern_texts = [pattern_map.get(p, p) for p in suggestion.growth_pattern]
@@ -818,12 +817,13 @@ class PanoramicAnnotationGUI:
 
                 # 生长级别
                 if hasattr(existing_ann, 'growth_level') and existing_ann.growth_level:
+                    # 映射弱生长到阳性
+                    mapped_level = self._map_growth_level_for_display(existing_ann.growth_level)
                     growth_map = {
                         'negative': '阴性',
-                        'weak_growth': '弱生长',
                         'positive': '阳性'
                     }
-                    growth_text = growth_map.get(existing_ann.growth_level, existing_ann.growth_level)
+                    growth_text = growth_map.get(mapped_level, mapped_level)
                     details.append(growth_text)
 
                 # 生长模式（如果是增强标注）
@@ -839,7 +839,7 @@ class PanoramicAnnotationGUI:
                         'focal': '聚焦性',
                         'diffuse': '弥漫性',
                         'default_positive': '阳性默认',
-                        'default_weak_growth': '弱生长默认'
+                        'default_weak_growth': '阳性默认'  # 弱生长默认映射为阳性默认
                     }
                     pattern_text = pattern_map.get(existing_ann.growth_pattern, existing_ann.growth_pattern)
                     details.append(pattern_text)
@@ -937,7 +937,7 @@ class PanoramicAnnotationGUI:
         stats_frame = ttk.LabelFrame(parent, text="统计信息")
         stats_frame.pack(fill=tk.X, pady=(0, 2))
         
-        self.stats_label = ttk.Label(stats_frame, text="统计: 未标注 0, 阴性 0, 弱生长 0, 阳性 0")
+        self.stats_label = ttk.Label(stats_frame, text="统计: 未标注 0, 阴性 0, 阳性 0")
         self.stats_label.pack(padx=5, pady=3)
         
         # 视图模式选择区域
@@ -1137,7 +1137,7 @@ class PanoramicAnnotationGUI:
     def on_key_2(self, event):
         """数字键2事件处理"""
         if not self.is_input_widget_focused():
-            self.set_growth_level('weak_growth')
+            self.set_growth_level('positive')  # 弱生长已移除，映射到阳性
     
     def on_key_3(self, event):
         """数字键3事件处理"""
@@ -2294,7 +2294,6 @@ class PanoramicAnnotationGUI:
             color_map = {
                 'positive': '#CC0000',        # 阳性：深红色（危险/需关注）
                 'negative': '#00AA00',        # 阴性：深绿色（安全/正常）
-                'weak_growth': '#FF8C00',     # 弱生长：深橙色（警告/中等风险）
                 'uncertain': '#9932CC',       # 不确定：深紫色（需进一步确认）
                 'default': '#708090'          # 默认：石板灰（未分类/中性）
             }
@@ -2303,7 +2302,6 @@ class PanoramicAnnotationGUI:
             current_color_map = {
                 'positive': '#FF0000',        # 阳性当前：亮红色
                 'negative': '#00FF00',        # 阴性当前：亮绿色
-                'weak_growth': '#FFA500',     # 弱生长当前：亮橙色
                 'uncertain': '#DA70D6',       # 不确定当前：亮紫色
                 'default': '#C0C0C0'          # 默认当前：银色
             }
@@ -4981,6 +4979,12 @@ class PanoramicAnnotationGUI:
         else:
             self.progress_label.config(text="0/0")
     
+    def _map_growth_level_for_display(self, growth_level):
+        """映射生长级别以用于显示 - 将弱生长映射为阳性"""
+        if growth_level == 'weak_growth':
+            return 'positive'
+        return growth_level
+    
     def update_statistics(self):
         """更新统计信息 - 基于增强标注"""
         if not self.slice_files:
@@ -4990,8 +4994,7 @@ class PanoramicAnnotationGUI:
         # 统计各类别数量 - 只统计有效孔位(25-120)
         stats = {
             'negative': 0,
-            'weak_growth': 0,
-            'positive': 0,
+            'positive': 0,  # 弱生长已映射到阳性，不再单独统计
             'total': 0,  # 将在循环中计算有效孔位总数
             'enhanced_annotated': 0,  # 增强标注数量
             'config_only': 0          # 仅有配置文件标注
@@ -5031,11 +5034,13 @@ class PanoramicAnnotationGUI:
                         stats['enhanced_annotated'] += 1
                         enhanced_count += 1
                         growth_level = annotation.growth_level
-                        if growth_level in stats:
-                            stats[growth_level] += 1
+                        # 映射弱生长到阳性
+                        mapped_level = self._map_growth_level_for_display(growth_level)
+                        if mapped_level in stats:
+                            stats[mapped_level] += 1
                             # Limit debug output to avoid spam
                             if enhanced_count <= 2:  # Only log first 2 enhanced annotations
-                                log_debug(f"统计增强标注 - 孔位{hole_number}, 级别: {growth_level}, 源: {source}", "STATS")
+                                log_debug(f"统计增强标注 - 孔位{hole_number}, 级别: {growth_level} -> {mapped_level}, 源: {source}", "STATS")
                     else:
                         # Config import or other types
                         stats['config_only'] += 1
@@ -5046,13 +5051,13 @@ class PanoramicAnnotationGUI:
         # Only log summary statistics to reduce console spam
         log_debug(f"统计结果 - 增强标注: {enhanced_count}, 配置导入: {config_count}, 未标注: {stats['unannotated']}", "STATS")
         if enhanced_count > 0 or config_count > 0:  # Only log details when there are annotations
-            log_debug(f"分类统计 - 阴性: {stats['negative']}, 弱生长: {stats['weak_growth']}, 阳性: {stats['positive']}", "STATS")
+            log_debug(f"分类统计 - 阴性: {stats['negative']}, 阳性: {stats['positive']} (弱生长已映射到阳性)", "STATS")
         
         # 更新显示
         if stats['config_only'] > 0:
-            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 弱生长 {stats['weak_growth']}, 阳性 {stats['positive']} (配置: {stats['config_only']})"
+            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 阳性 {stats['positive']} (配置: {stats['config_only']})"
         else:
-            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 弱生长 {stats['weak_growth']}, 阳性 {stats['positive']}"
+            stats_text = f"统计: 未标注 {stats['unannotated']}, 阴性 {stats['negative']}, 阳性 {stats['positive']}"
         self.stats_label.config(text=stats_text)
     
     def update_status(self, message: str):

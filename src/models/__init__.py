@@ -1,20 +1,14 @@
 """
-Data models for batch annotation tool.
+Data models for annotation tool.
 """
 
 from .annotation import Annotation
-from .batch_job import BatchJob, JobStatus
-from .dataset import Dataset
 from .enhanced_annotation import EnhancedPanoramicAnnotation
-from .panoramic_annotation import PanoramicAnnotation
-from .simple_panoramic_annotation import SimplePanoramicAnnotation
+from .panoramic_annotation import PanoramicAnnotation, PanoramicDataset
 
 __all__ = [
     'Annotation',
-    'BatchJob',
-    'JobStatus',
-    'Dataset',
-    'EnhancedPanoramicAnnotation',
+    'EnhancedPanoramicAnnotation', 
     'PanoramicAnnotation',
-    'SimplePanoramicAnnotation'
+    'PanoramicDataset'
 ]

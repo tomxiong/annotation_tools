@@ -9,7 +9,7 @@
 
 ### 1.1 主要组件
 ```
-panoramic_annotation_gui.py (6398行)
+panoramic_annotation_gui.py (6354行)
 ├── 主界面类 PanoramicAnnotationGUI
 ├── 进度对话框类 ProgressDialog  
 ├── 视图模式枚举 ViewMode
@@ -21,9 +21,7 @@ panoramic_annotation_gui.py (6398行)
 panoramic_annotation_gui.py
 ├── UI组件依赖
 │   ├── src.ui.hole_manager → 孔位管理器
-│   ├── src.ui.hole_config_panel → 孔位配置面板
-│   ├── src.ui.enhanced_annotation_panel → 增强标注面板
-│   └── src.ui.batch_import_dialog → 批量导入对话框
+│   └── src.ui.enhanced_annotation_panel → 增强标注面板
 ├── 服务层依赖
 │   ├── src.services.panoramic_image_service → 全景图像服务
 │   └── src.services.config_file_service → 配置文件服务
@@ -103,19 +101,19 @@ def go_next_panoramic()    # 下一张全景图
 
 ##### D. 标注操作方法
 ```python
-def save_current_annotation()     # 保存当前标注
-def skip_current()               # 跳过当前孔位
-def clear_current_annotation()   # 清除当前标注
-def batch_import_annotations()   # 批量导入标注
-def import_model_suggestions()   # 导入模型建议
+def save_current_annotation()      # 保存当前标注
+def skip_current()                # 跳过当前孔位
+def clear_current_annotation()    # 清除当前标注
+def save_annotations()            # 保存标注数据集
+def load_annotations()            # 加载标注数据集
 ```
 
 ##### E. 事件处理方法
 ```python
-def setup_bindings()           # 设置键盘快捷键
-def on_panoramic_click()       # 全景图点击事件
-def on_enhanced_annotation_change()  # 增强标注变化事件
-def on_view_mode_changed()     # 视图模式变更事件
+def setup_bindings()               # 设置键盘快捷键
+def on_panoramic_click()          # 全景图点击事件
+def on_enhanced_annotation_change() # 增强标注变化事件
+def on_view_mode_changed()        # 视图模式变更事件
 ```
 
 ### 2.2 ProgressDialog 类
@@ -167,14 +165,6 @@ class ViewMode(Enum):
 - number_to_position()    # 孔位号转坐标
 - validate_hole_number()  # 验证孔位号有效性
 - get_adjacent_holes()    # 获取相邻孔位
-```
-
-#### HoleConfigPanel (孔位配置面板)
-```python
-# 位置: src/ui/hole_config_panel.py
-# 职责: 提供孔位参数配置界面
-# 功能: 起始孔位设置、批量配置等
-# 集成: 嵌入到主界面右侧面板
 ```
 
 #### EnhancedAnnotationPanel (增强标注面板)
@@ -414,12 +404,22 @@ enum                  # 枚举类型
 
 ### 7.2 文件组织
 ```
-src/ui/panoramic_annotation_gui.py     # 主文件 (6398行)
-├── 主要类和辅助类定义
-├── 界面构建逻辑
-├── 事件处理系统  
-├── 数据管理逻辑
-└── 性能优化代码
+src/
+├── ui/
+│   ├── panoramic_annotation_gui.py      # 主界面 (6354行)
+│   ├── enhanced_annotation_panel.py     # 增强标注面板 (1329行)
+│   └── hole_manager.py                  # 孔位管理器
+├── models/
+│   ├── panoramic_annotation.py          # 全景标注数据模型
+│   └── enhanced_annotation.py           # 增强标注数据模型 (690行)
+├── services/
+│   ├── panoramic_image_service.py       # 全景图像服务
+│   └── config_file_service.py           # 配置文件服务
+├── utils/
+│   ├── logger.py                        # 日志工具
+│   └── version.py                       # 版本管理
+└── config/
+    └── logging_config.py                # 日志配置
 ```
 
 ### 7.3 配置项
@@ -438,17 +438,19 @@ src/ui/panoramic_annotation_gui.py     # 主文件 (6398行)
 ## 8. 开发和维护建议
 
 ### 8.1 代码组织建议
-**当前状态**: 主文件过大 (6398行)，建议拆分
+**当前状态**: 主文件仍较大 (6354行)，建议考虑进一步模块化
+
+**当前状态**: 主文件较大 (6354行)，建议拆分
 
 **推荐拆分方案**:
 ```
 panoramic_annotation_gui/
-├── main_gui.py           # 主界面类 (1000-1500行)
-├── event_handlers.py     # 事件处理 (500-800行)  
-├── data_manager.py       # 数据管理 (800-1000行)
-├── ui_builders.py        # 界面构建 (1000行)
-├── navigation_controller.py  # 导航控制 (500行)
-└── performance_monitor.py    # 性能监控 (300行)
+├── main_gui.py              # 主界面类 (1500-2000行)
+├── event_handlers.py        # 事件处理 (800-1000行)  
+├── data_manager.py          # 数据管理 (1000-1200行)
+├── ui_builders.py           # 界面构建 (1200-1500行)
+├── navigation_controller.py # 导航控制 (800-1000行)
+└── performance_monitor.py   # 性能监控 (500行)
 ```
 
 ### 8.2 扩展开发指南
@@ -479,21 +481,44 @@ panoramic_annotation_gui/
 
 ## 9. 总结
 
-`panoramic_annotation_gui.py` 是整个全景图像标注工具的核心控制器，它通过精心设计的架构协调了UI显示、数据管理、用户交互等多个方面的功能。虽然当前文件较大，但其模块化的内部结构为未来的重构和扩展提供了良好的基础。
+`panoramic_annotation_gui.py` 是整个全景图像标注工具的核心控制器，它协调了UI显示、数据管理、用户交互等多个方面的功能。当前文件较大(6354行)，虽然功能完整，但建议考虑进一步模块化以提高维护性。
 
 该架构的主要优势：
 - **职责分离**: 清晰的分层设计
+- **功能完整**: 包含所有核心功能
 - **可扩展性**: 插件化的组件机制
 - **用户体验**: 智能化的操作辅助
 - **性能优化**: 细致的性能监控和调优
 
-建议的改进方向：
-- **模块化拆分**: 将主文件拆分为多个专门的模块
-- **异步处理**: 引入异步机制处理耗时操作
-- **单元测试**: 为关键组件添加测试覆盖
-- **文档完善**: 补充详细的API文档和使用指南
+已完成的清理：
+- **移除冗余组件**: 删除不必要的独立文件
+  - 移除了 `hole_config_panel.py` (孔位配置面板，功能已集成)
+  - 移除了 `batch_import_dialog.py` (批量导入对话框，功能已简化)
+  - 简化了模型建议服务为占位符实现
+- **依赖清理**: 移除无用的依赖关系，保持架构清晰
 
 ---
 
-*文档生成时间: 2025年9月12日*
-*基于版本: panoramic_annotation_gui.py (6398行)*
+## 10. 项目当前状态总结
+
+### 10.1 核心文件状态
+- **主界面**: `panoramic_annotation_gui.py` (6354行) - 功能完整，建议进一步模块化
+- **增强标注**: `enhanced_annotation_panel.py` (1329行) - 支持复合特征标注
+- **数据模型**: 完整的标注数据结构，支持生长级别映射
+- **服务层**: 图像处理和配置文件服务完备
+
+### 10.2 已清理组件
+- `hole_config_panel.py` - 孔位配置功能已集成到主界面
+- `batch_import_dialog.py` - 批量导入功能已简化
+- 复杂的模型建议服务 - 保留占位符接口
+
+### 10.3 架构优势
+- **功能完整**: 保留所有核心标注功能
+- **依赖清晰**: 结构清晰，依赖关系简单
+- **可维护**: 虽然文件较大，但结构相对清晰
+- **扩展性**: 预留接口支持未来扩展
+
+---
+
+*文档更新时间: 2025年9月12日*
+*基于版本: panoramic_annotation_gui.py (6354行)*
