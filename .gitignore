@@ -450,5 +450,5 @@ example/SE10000052/hole_120.png
 example/SE10000052/position.bmp
 repomix-output.md
 ui_state.json
-release/
 logs/
+/release

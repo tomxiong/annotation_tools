@@ -21,49 +21,28 @@ try:
         log_debug_detail, log_ui_detail, log_timing,
         toggle_debug_logging, is_debug_logging_enabled
     )
-except ImportError:
-    # 如果日志模块不可用，使用文件日志作为后备
+except ImportError as e:
+    # 日志模块导入失败，使用标准日志记录错误并退出
     import logging
-    import os
-    from pathlib import Path
+    import sys
+    
+    logging.error(f"关键模块导入失败 - src.utils.logger: {e}")
+    logging.error("请检查以下可能的问题:")
+    logging.error("1. 文件 src/utils/logger.py 是否存在")
+    logging.error("2. Python路径是否正确配置")
+    logging.error("3. 相关依赖是否已安装")
+    raise ImportError(f"无法导入必需的日志模块: {e}") from e
 
 # 版本管理导入
 try:
     from src.utils.version import get_version_display
-except ImportError:
+except ImportError as e:
+    # 注意：此时log_error可能还未定义，使用print作为临时方案
+    print(f"警告: 版本模块导入失败 - src.utils.version: {e}")
+    print("使用默认版本信息，请检查 src/utils/version.py 是否存在")
+    
     def get_version_display():
-        return "v1.0.0"
-
-    # 配置日志系统
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / "panoramic_annotation.log"
-
-    logging.basicConfig(
-        filename=str(log_file),
-        level=logging.DEBUG,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    # 控制台处理器 - 完全禁用控制台输出，将所有日志重定向到文件
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.CRITICAL + 1)  # 设置为高于CRITICAL的级别，禁用所有控制台输出
-    console_formatter = logging.Formatter('[%(levelname)s] %(message)s')
-    console_handler.setFormatter(console_formatter)
-
-    # 获取根日志器并添加控制台处理器（但不输出任何内容）
-    root_logger = logging.getLogger()
-    root_logger.addHandler(console_handler)
-
-    def log_debug(msg, category=""):
-        logging.debug(f"[{category}] {msg}" if category else msg)
-    def log_info(msg, category=""):
-        logging.info(f"[{category}] {msg}" if category else msg)
-    def log_warning(msg, category=""):
-        logging.warning(f"[{category}] {msg}" if category else msg)
-    def log_error(msg, category=""):
-        logging.error(f"[{category}] {msg}" if category else msg)
+        return "v1.0.0 (版本模块缺失)"
 
 # 动态导入模块以避免相对导入问题
 import sys
@@ -88,18 +67,32 @@ from src.models.panoramic_annotation import PanoramicAnnotation, PanoramicDatase
 from src.models.enhanced_annotation import EnhancedPanoramicAnnotation, FeatureCombination
 
 
-# 模型建议导入服务
-try:
-    from services.model_suggestion_import_service import ModelSuggestionImportService
-except ImportError:
-    # 如果模块不可用，使用占位符
-    class ModelSuggestionImportService:
-        def __init__(self):
-            """占位符实现"""
-        def load_from_json(self, path):
-            return {}
-        def merge_into_session(self, session, suggestions_map):
-            """占位符实现"""
+# 模型建议导入服务 - 尝试多个可能的路径
+MODEL_SUGGESTION_SERVICE_AVAILABLE = False
+ModelSuggestionImportService = None
+
+# 尝试从不同路径导入模型建议服务
+import_attempts = [
+    ('src.services.model_suggestion_import_service', 'ModelSuggestionImportService'),
+    ('services.model_suggestion_import_service', 'ModelSuggestionImportService'),
+]
+
+for module_path, class_name in import_attempts:
+    try:
+        module = __import__(module_path, fromlist=[class_name])
+        ModelSuggestionImportService = getattr(module, class_name)
+        MODEL_SUGGESTION_SERVICE_AVAILABLE = True
+        print(f"信息: 成功从 {module_path} 导入模型建议服务")
+        break
+    except ImportError as e:
+        # 使用print因为此时log函数可能还未定义
+        print(f"调试: 尝试从 {module_path} 导入失败: {e}")
+        continue
+
+if not MODEL_SUGGESTION_SERVICE_AVAILABLE:
+    print("警告: 模型建议服务不可用 - 模型建议功能将被禁用")
+    print("警告: 缺失的服务: ModelSuggestionImportService")
+    print("警告: 影响功能: 导入模型建议、模型视图模式")
 
 
 # 视图模式枚举
@@ -230,6 +223,9 @@ class PanoramicAnnotationGUI:
         self.root.geometry("1600x900")   # 目标尺寸1600x900
         self.root.minsize(1400, 800)     # 保持最小尺寸
         
+        # 记录服务可用性状态
+        log_info(f"模型建议服务可用性: {MODEL_SUGGESTION_SERVICE_AVAILABLE}", "INIT")
+        
         # 绑定日志方法到实例
         self.log_debug = log_debug
         self.log_info = log_info
@@ -240,7 +236,18 @@ class PanoramicAnnotationGUI:
         self.image_service = PanoramicImageService()
         self.hole_manager = HoleManager()
         self.config_service = ConfigFileService()
-        self.model_suggestion_service = ModelSuggestionImportService()
+        
+        # 模型建议服务 - 仅在可用时初始化
+        if MODEL_SUGGESTION_SERVICE_AVAILABLE and ModelSuggestionImportService:
+            try:
+                self.model_suggestion_service = ModelSuggestionImportService()
+                log_info("模型建议服务初始化成功", "INIT")
+            except Exception as e:
+                log_error(f"模型建议服务初始化失败: {e}", "INIT")
+                self.model_suggestion_service = None
+        else:
+            self.model_suggestion_service = None
+            log_warning("模型建议服务不可用，相关功能将被禁用", "INIT")
         
         # 模型建议相关属性
         self.current_suggestions_map = None
@@ -447,8 +454,21 @@ class PanoramicAnnotationGUI:
         ttk.Button(toolbar, text="保存标注",
                   command=self.save_annotations).pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Button(toolbar, text="导入模型建议",
-                  command=self.import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
+        # 模型建议按钮 - 根据服务可用性设置状态
+        self.model_suggestion_button = ttk.Button(toolbar, text="导入模型建议",
+                  command=self.import_model_suggestions)
+        self.model_suggestion_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # 如果模型建议服务不可用，禁用按钮并添加提示
+        if not MODEL_SUGGESTION_SERVICE_AVAILABLE:
+            self.model_suggestion_button.configure(state='disabled')
+            # 创建工具提示（简化版本）
+            def show_unavailable_tooltip(event):
+                messagebox.showwarning(
+                    "功能不可用", 
+                    "模型建议功能不可用\n\n原因：ModelSuggestionImportService 模块未找到"
+                )
+            self.model_suggestion_button.bind('<Double-Button-1>', show_unavailable_tooltip)
 
         # === 隐藏的调试和性能相关功能 ===
         # 以下按钮已隐藏，如需重新启用请取消注释：
@@ -983,6 +1003,13 @@ class PanoramicAnnotationGUI:
         self.model_radio = ttk.Radiobutton(mode_frame, text="模型", variable=self.view_mode_var,
                                           value=ViewMode.MODEL.value, command=self._on_view_mode_changed)
         self.model_radio.pack(side=tk.LEFT, padx=5)
+        
+        # 如果模型建议服务不可用，禁用模型视图模式
+        if not MODEL_SUGGESTION_SERVICE_AVAILABLE:
+            self.model_radio.configure(state='disabled')
+            # 创建一个提示标签
+            ttk.Label(mode_frame, text="(需要模型建议服务)", 
+                     font=('TkDefaultFont', 8), foreground='gray').pack(side=tk.LEFT, padx=2)
     
     def _on_view_mode_changed(self):
         """视图模式变更事件处理"""
@@ -990,6 +1017,18 @@ class PanoramicAnnotationGUI:
             # 获取当前选择的视图模式
             mode_value = self.view_mode_var.get()
             old_mode = self.current_view_mode
+            
+            # 如果尝试切换到模型视图但服务不可用，阻止切换
+            if mode_value == ViewMode.MODEL.value and not MODEL_SUGGESTION_SERVICE_AVAILABLE:
+                # 恢复到之前的模式
+                self.view_mode_var.set(old_mode.value)
+                messagebox.showwarning(
+                    "模式不可用", 
+                    "模型视图模式不可用\n\n原因：ModelSuggestionImportService 模块未找到\n\n"
+                    "请检查系统配置或使用人工视图模式。"
+                )
+                return
+            
             self.current_view_mode = ViewMode(mode_value)
 
             log_debug(f"[VIEW_MODE] 视图模式从 {old_mode.value} 切换到 {self.current_view_mode.value}")
@@ -5779,6 +5818,18 @@ class PanoramicAnnotationGUI:
     
     def import_model_suggestions(self):
         """导入模型预测结果文件"""
+        # 检查模型建议服务是否可用
+        if not self.model_suggestion_service:
+            messagebox.showerror(
+                "功能不可用", 
+                "模型建议服务不可用。\n\n可能的原因：\n"
+                "1. 模块 ModelSuggestionImportService 未实现\n"
+                "2. 相关依赖未安装\n"
+                "3. 文件路径配置错误\n\n"
+                "请检查系统配置或联系开发人员。"
+            )
+            return
+        
         try:
             file_path = filedialog.askopenfilename(
                 title="选择模型预测结果文件",
@@ -5789,7 +5840,12 @@ class PanoramicAnnotationGUI:
                 return
 
             # 使用模型建议服务加载文件
-            suggestions_map, warnings = self.model_suggestion_service.load_from_json(file_path)
+            try:
+                suggestions_map, warnings = self.model_suggestion_service.load_from_json(file_path)
+            except Exception as e:
+                log_error(f"模型建议服务调用失败: {e}", "MODEL_SUGGESTION")
+                messagebox.showerror("服务错误", f"模型建议服务调用失败：\n{str(e)}")
+                return
 
             if suggestions_map:
                 self.current_suggestions_map = suggestions_map
@@ -6005,9 +6061,10 @@ class PanoramicAnnotationGUI:
                 self.set_view_mode(ViewMode.MANUAL)
                 return
 
-            # 检查是否有模型建议数据
-            if hasattr(self, 'model_suggestion_loaded') and self.model_suggestion_loaded:
-                log_debug("检测到模型建议数据，切换到模型视图", "AUTO_VIEW")
+            # 检查是否有模型建议数据（仅在服务可用时）
+            if (MODEL_SUGGESTION_SERVICE_AVAILABLE and 
+                hasattr(self, 'model_suggestion_loaded') and self.model_suggestion_loaded):
+                log_debug("检测到模型建议数据且服务可用，切换到模型视图", "AUTO_VIEW")
                 self.set_view_mode(ViewMode.MODEL)
                 return
 
