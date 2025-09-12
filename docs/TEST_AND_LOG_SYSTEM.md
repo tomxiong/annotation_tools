@@ -55,21 +55,21 @@ python test_suite.py --tests inheritance --verbose
 
 ```bash
 # 查看当前状态
-python log_manager.py status
+python tools/log_manager.py status
 
 # 设置日志级别
-python log_manager.py set off     # 关闭调试日志
-python log_manager.py set info    # 启用信息级别
-python log_manager.py set verbose # 启用详细调试
+python tools/log_manager.py set off     # 关闭调试日志
+python tools/log_manager.py set info    # 启用信息级别
+python tools/log_manager.py set verbose # 启用详细调试
 
 # 测试日志输出
-python log_manager.py test
+python tools/log_manager.py test
 
 # 查看日志分类
-python log_manager.py categories
+python tools/log_manager.py categories
 
 # 清理日志文件
-python log_manager.py clear
+python tools/log_manager.py clear
 ```
 
 ### 日志级别说明
