@@ -272,14 +272,14 @@ class PanoramicAnnotationGUI:
         self.skip_button = None  # 跳过按钮引用
         self.clear_button = None  # 清除按钮引用
 
-        # 高性能延迟配置 - 基于持续优化数据精细调整（2025-09-10 17:00）
-        # 优化效果持续稳定，设置应用3.8ms平均，95%耗时9.0ms，进一步降低延迟
+        # 高性能延迟配置 - 基于性能监控数据进一步优化（2025-09-12 22:00）
+        # 性能分析显示延迟偏高，进一步优化延迟配置以提升响应速度
         self.delay_config = {
-            'settings_apply': 30,       # 从50ms精细调整至30ms，基于9.0ms的95%耗时+安全边距
-            'button_recovery': 150,     # 按钮恢复延迟保持不变
-            'quick_recovery': 100,      # 快速操作恢复保持不变
-            'ui_refresh': 50,           # UI刷新延迟保持不变
-            'verification': 100         # 验证延迟保持不变
+            'settings_apply': 10,       # 从30ms降至10ms，基于性能瓶颈分析结果
+            'button_recovery': 50,      # 从150ms降至50ms，减少用户等待时间
+            'quick_recovery': 30,       # 从100ms降至30ms，提升快速操作体验
+            'ui_refresh': 20,           # 从50ms降至20ms，减少界面刷新延迟
+            'verification': 50          # 从100ms降至50ms，加快验证速度
         }
         
         # 性能监控数据收集 - 详细分析复制设置性能
@@ -318,7 +318,7 @@ class PanoramicAnnotationGUI:
         }
         
         # === 性能监控功能配置 ===
-        # 性能数据收集开关 - 已启用用于分析复制设置性能
+        # 性能数据收集开关 - 默认关闭
         # 如需重新启用性能监控功能：
         # 1. 将下行的 value=False 改为 value=True
         # 2. 取消注释工具栏中的性能监控相关按钮（搜索"性能监控相关功能已隐藏"）
@@ -450,21 +450,23 @@ class PanoramicAnnotationGUI:
         ttk.Button(toolbar, text="导入模型建议",
                   command=self.import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Button(toolbar, text="起始点调整",
-                  command=self.show_start_position_dialog).pack(side=tk.LEFT, padx=(0, 10))
+        # === 隐藏的调试和性能相关功能 ===
+        # 以下按钮已隐藏，如需重新启用请取消注释：
+        
+        # ttk.Button(toolbar, text="起始点调整",
+        #           command=self.show_start_position_dialog).pack(side=tk.LEFT, padx=(0, 10))
 
-        # 调试日志开关
-        ttk.Checkbutton(toolbar, text="调试日志",
-                       variable=self.debug_logging_enabled,
-                       command=self.toggle_debug_logging).pack(side=tk.LEFT, padx=(0, 5))
+        # 调试日志开关 - 已隐藏，默认关闭
+        # ttk.Checkbutton(toolbar, text="调试日志",
+        #                variable=self.debug_logging_enabled,
+        #                command=self.toggle_debug_logging).pack(side=tk.LEFT, padx=(0, 5))
 
-        # === 性能监控相关功能已隐藏，减少界面复杂度 ===
-        # 如需启用，取消以下注释：
-        # # 性能监控开关
+        # === 性能监控相关功能已隐藏 ===
+        # 性能监控开关
         # ttk.Checkbutton(toolbar, text="性能监控",
         #                variable=self.performance_monitoring_enabled).pack(side=tk.LEFT, padx=(0, 5))
 
-        # # 性能分析按钮
+        # 性能分析按钮
         # ttk.Button(toolbar, text="性能分析",
         #           command=self.show_performance_analysis).pack(side=tk.LEFT, padx=(0, 5))
 
@@ -752,17 +754,28 @@ class PanoramicAnnotationGUI:
                     # 生长模式
                     if hasattr(suggestion, 'growth_pattern') and suggestion.growth_pattern:
                         pattern_map = {
+                            # 基础模式
                             'clean': '清亮',
                             'small_dots': '中心小点',
                             'light_gray': '浅灰色',
                             'irregular_areas': '不规则区域',
                             'clustered': '聚集型',
                             'scattered': '分散型',
-                            'heavy_growth': '重度生长',
+                            'heavy_growth': '重度',
                             'focal': '聚焦性',
-                            'diffuse': '弥漫性',
+                            'diffuse': '弥散',
                             'default_positive': '阳性默认',
-                            'default_weak_growth': '阳性默认'  # 弱生长默认映射为阳性默认
+                            'default_weak_growth': '阳性默认',  # 弱生长默认映射为阳性默认
+                            
+                            # 新增的生长模式映射
+                            'weak_scattered': '微弱分散',
+                            'litter_center_dots': '弱中心点',
+                            'strong_scattered': '强分散',
+                            'center_dots': '强中心点',
+                            'weak_scattered_pos': '弱分散',
+                            'irregular': '不规则',
+                            'filamentous_non_fused': '丝状非融合',
+                            'filamentous_fused': '丝状融合'
                         }
                         if isinstance(suggestion.growth_pattern, list):
                             pattern_texts = [pattern_map.get(p, p) for p in suggestion.growth_pattern]
@@ -829,17 +842,28 @@ class PanoramicAnnotationGUI:
                 # 生长模式（如果是增强标注）
                 if hasattr(existing_ann, 'growth_pattern') and existing_ann.growth_pattern:
                     pattern_map = {
+                        # 基础模式
                         'clean': '清亮',
                         'small_dots': '中心小点',
                         'light_gray': '浅灰色',
                         'irregular_areas': '不规则区域',
                         'clustered': '聚集型',
                         'scattered': '分散型',
-                        'heavy_growth': '重度生长',
+                        'heavy_growth': '重度',
                         'focal': '聚焦性',
-                        'diffuse': '弥漫性',
+                        'diffuse': '弥散',
                         'default_positive': '阳性默认',
-                        'default_weak_growth': '阳性默认'  # 弱生长默认映射为阳性默认
+                        'default_weak_growth': '阳性默认',  # 弱生长默认映射为阳性默认
+                        
+                        # 新增的生长模式映射
+                        'weak_scattered': '微弱分散',
+                        'litter_center_dots': '弱中心点',
+                        'strong_scattered': '强分散',
+                        'center_dots': '强中心点',
+                        'weak_scattered_pos': '弱分散',
+                        'irregular': '不规则',
+                        'filamentous_non_fused': '丝状非融合',
+                        'filamentous_fused': '丝状融合'
                     }
                     pattern_text = pattern_map.get(existing_ann.growth_pattern, existing_ann.growth_pattern)
                     details.append(pattern_text)
@@ -3860,8 +3884,7 @@ class PanoramicAnnotationGUI:
             log_debug("保存操作正在进行中，忽略重复点击", "SAVE")
             return
         
-        # *** 新版本智能设置继承开始标记 ***
-        log_info("*** 新版本智能设置继承 - 开始执行 ***", "SMART_INHERIT")
+        # 智能设置继承开始执行
         
         # 记录操作开始时间 (用于性能监控)
         import time
@@ -3887,7 +3910,6 @@ class PanoramicAnnotationGUI:
             
             # === 步骤2: 收集当前设置信息 ===
             settings_collect_start = time.time()
-            log_info("*** 开始收集设置信息 ***", "SMART_INHERIT")
             
             # 记录当前视图模式
             original_view_mode = self.current_view_mode
@@ -3895,37 +3917,28 @@ class PanoramicAnnotationGUI:
 
             # 获取当前标注设置（作为下一个孔位的潜在设置）
             current_settings = self.get_current_annotation_settings()
-            log_info(f"*** 获取当前设置: {current_settings is not None} ***", "SMART_INHERIT")
             
             # 获取下一个孔位信息
             next_hole_info = self.get_next_hole_info()
-            log_info(f"*** 获取下个孔位信息: {next_hole_info is not None} ***", "SMART_INHERIT")
             
             settings_collect_time = (time.time() - settings_collect_start) * 1000
             self._record_detailed_copy_timing('settings_collect_times', settings_collect_time)
             log_timing(f"设置收集完成，耗时: {settings_collect_time:.1f}ms")
 
-            log_info("*** 调用 save_current_annotation_internal ***", "SMART_INHERIT")
             internal_result = self.save_current_annotation_internal("manual")
-            log_info(f"*** save_current_annotation_internal 返回: {internal_result} ***", "SMART_INHERIT")
             
             if internal_result:
                 # === 步骤3: 导航跳转 ===
-                log_info("*** 开始导航跳转 ***", "SMART_INHERIT")
                 navigation_start = time.time()
                 self.go_next_hole()
                 navigation_time = (time.time() - navigation_start) * 1000
                 self._record_detailed_copy_timing('navigation_times', navigation_time)
                 self._record_performance_data('ui_load', navigation_time)
                 log_timing(f"导航跳转完成，耗时: {navigation_time:.1f}ms")
-                log_info("*** 导航跳转完成 ***", "SMART_INHERIT")
 
                 # === 步骤4: 智能设置继承策略 ===
-                log_info(f"*** 检查是否需要应用智能设置继承: current_settings={current_settings is not None}, next_hole_info={next_hole_info is not None} ***", "SMART_INHERIT")
                 if current_settings and next_hole_info:
-                    log_info("*** 开始智能设置继承策略 ***", "SMART_INHERIT")
                     def apply_smart_settings():
-                        log_info("*** 进入 apply_smart_settings 函数 ***", "SMART_INHERIT")
                         # === 步骤4.1: UI刷新准备 ===
                         ui_refresh_start = time.time()
                         self.root.update_idletasks()
@@ -3933,13 +3946,11 @@ class PanoramicAnnotationGUI:
                         self._record_detailed_copy_timing('ui_refresh_times', ui_refresh_time)
                         
                         # === 步骤4.2: 智能设置应用 ===
-                        log_info("*** 开始调用智能设置继承策略 ***", "SMART_INHERIT")
                         settings_apply_start = time.time()
                         
                         success, strategy = self._apply_smart_inheritance_strategy(
                             current_settings, next_hole_info, original_view_mode
                         )
-                        log_info(f"*** 智能设置继承策略完成: success={success}, strategy={strategy} ***", "SMART_INHERIT")
                         
                         settings_apply_time = (time.time() - settings_apply_start) * 1000
                         self._record_detailed_copy_timing('settings_apply_times', settings_apply_time)
@@ -3971,38 +3982,32 @@ class PanoramicAnnotationGUI:
                         if original_view_mode != ViewMode.MANUAL:
                             status_msg += f" (保持{original_view_mode.value}视图)"
                         self.update_status(status_msg)
-                        
-                        log_perf(f"智能设置继承完成，策略: {strategy}，总耗时: {total_copy_time:.1f}ms")
 
-                    # 使用优化的延迟时间
+                    # 使用优化的延迟时间和智能调度策略
                     delay_time = self.delay_config['settings_apply']
                     log_debug(f"使用延迟时间: {delay_time}ms", "PERFORMANCE")
-                    log_info(f"*** 设置延迟调用 apply_smart_settings，延迟时间: {delay_time}ms ***", "SMART_INHERIT")
-                    self.root.after(delay_time, apply_smart_settings)
+                    
+                    # 智能调度策略：当延迟很短时直接调用，避免GUI事件队列阻塞
+                    if delay_time <= 10:
+                        apply_smart_settings()
+                    else:
+                        self.root.after(delay_time, apply_smart_settings)
                 else:
                     # 无设置信息，直接启用控件
-                    log_info("*** 无设置信息，直接启用控件 ***", "SMART_INHERIT")
                     self._enable_annotation_controls()
                     current_file = self.slice_files[self.current_slice_index - 1] if self.current_slice_index > 0 else self.slice_files[self.current_slice_index]
                     self.update_status(f"已保存标注: {current_file['filename']}")
 
                 # 确保视图模式保持不变
-                log_info("*** 检查视图模式是否需要恢复 ***", "SMART_INHERIT")
                 if self.current_view_mode != original_view_mode:
                     log_debug(f"恢复视图模式从 {self.current_view_mode.value} 到 {original_view_mode.value}", "SAVE")
-                    log_info(f"*** 恢复视图模式从 {self.current_view_mode.value} 到 {original_view_mode.value} ***", "SMART_INHERIT")
                     self.set_view_mode(original_view_mode)
-                else:
-                    log_info("*** 视图模式无需恢复 ***", "SMART_INHERIT")
-                
-                log_info("*** save_current_annotation 方法正常结束 ***", "SMART_INHERIT")
 
         except Exception as e:
             import traceback
             error_msg = f"保存标注失败: {str(e)}"
             # 记录详细错误信息到日志
             log_error(f"{error_msg}\n{traceback.format_exc()}")
-            log_info(f"*** save_current_annotation 捕获异常: {error_msg} ***", "SMART_INHERIT")
             # 同时显示简化的用户友好错误消息
             messagebox.showerror("错误", error_msg)
             self._enable_annotation_controls()  # 确保在错误时恢复按钮状态
@@ -4027,29 +4032,20 @@ class PanoramicAnnotationGUI:
         2. CFG配置：根据生长级别匹配情况决定复制设置还是应用CFG
         3. 无配置：复制当前设置（手动视图）或重置为默认（其他情况）
         """
-        log_info("*** 进入 _apply_smart_inheritance_strategy 方法 ***", "SMART_INHERIT")
         try:
             next_hole_number = next_hole_info['hole_number']
             next_panoramic_id = next_hole_info.get('panoramic_id')
             
             log_debug(f"开始智能设置继承 - 目标孔位{next_hole_number}，视图模式: {view_mode.value}", "SMART_INHERIT")
-            log_info(f"*** 目标孔位: {next_hole_number}, 全景图ID: {next_panoramic_id} ***", "SMART_INHERIT")
             
             # 策略0: 模型视图优先处理 - 优先显示模型预测
             if view_mode == ViewMode.MODEL:
-                log_info("*** 策略0: 模型视图 - 优先检查模型预测 ***", "SMART_INHERIT")
                 if hasattr(self, 'hole_manager') and self.hole_manager:
                     if self.hole_manager.has_hole_suggestion(next_hole_number):
-                        log_info(f"*** 策略0: 找到模型预测，应用模型预测到孔位{next_hole_number} ***", "SMART_INHERIT")
                         self._load_model_view_data()
                         return True, "apply_model"
-                    else:
-                        log_info(f"*** 策略0: 孔位{next_hole_number}无模型预测，继续其他策略 ***", "SMART_INHERIT")
-                else:
-                    log_info(f"*** 策略0: 无hole_manager或未初始化，继续其他策略 ***", "SMART_INHERIT")
             
             # 策略1: 用户手动标注保护（仅人工视图）
-            log_info("*** 策略1: 检查下一个孔位是否已有用户手动标注（仅人工视图） ***", "SMART_INHERIT")
             
             # 只在人工视图下保护手动标注
             if view_mode == ViewMode.MANUAL:
@@ -4061,36 +4057,22 @@ class PanoramicAnnotationGUI:
                 # 检查是否为用户手动标注（只对用户手动标注保持不变）
                 if existing_annotation and hasattr(existing_annotation, 'annotation_source'):
                     is_manual_annotation = existing_annotation.annotation_source in ['enhanced_manual', 'manual']
-                    log_info(f"*** 人工视图-找到已有标注，来源: {existing_annotation.annotation_source}, 是否手动标注: {is_manual_annotation} ***", "SMART_INHERIT")
                     
                     if is_manual_annotation:
-                        log_strategy(f"策略1: 人工视图-孔位{next_hole_number}已有用户手动标注，保持不变")
                         self._apply_existing_annotation(existing_annotation)
                         return True, "apply_existing"
-                    else:
-                        log_strategy(f"策略1: 人工视图-孔位{next_hole_number}已有非手动标注({existing_annotation.annotation_source})，进入策略2判断")
-                else:
-                    if existing_annotation:
-                        log_info(f"*** 人工视图-找到已有标注，但无annotation_source属性，视为非手动标注 ***", "SMART_INHERIT")
-                    else:
-                        log_info(f"*** 人工视图-孔位{next_hole_number}无已有标注 ***", "SMART_INHERIT")
-            else:
-                log_info(f"*** 模型视图-跳过手动标注保护，进入策略2 ***", "SMART_INHERIT")
             
             # 策略2: 检查是否有CFG配置
-            log_info("*** 策略2: 检查是否有CFG配置 ***", "SMART_INHERIT")
             config_growth_level = self.get_config_growth_level(next_hole_number)
             current_growth_level = current_settings['growth_level']
             if hasattr(current_growth_level, 'value'):
                 current_growth_level = current_growth_level.value
             
             log_debug(f"智能设置继承 - 孔位{next_hole_number}: CFG生长级别='{config_growth_level}', 当前生长级别='{current_growth_level}'", "SMART_INHERIT")
-            log_info(f"*** CFG生长级别: '{config_growth_level}', 当前生长级别: '{current_growth_level}' ***", "SMART_INHERIT")
             
             if config_growth_level:
                 # 有CFG配置，比较生长级别
                 if config_growth_level == current_growth_level:
-                    log_strategy(f"策略2A: 孔位{next_hole_number}CFG生长级别匹配({config_growth_level})，复制当前设置")
                     # 生长级别匹配，复制当前设置
                     if self.apply_annotation_settings_sync(current_settings):
                         return True, "keep_current"
@@ -4099,20 +4081,17 @@ class PanoramicAnnotationGUI:
                         self._apply_cfg_based_settings(next_hole_number, config_growth_level)
                         return True, "apply_cfg"
                 else:
-                    log_strategy(f"策略2B: 孔位{next_hole_number}CFG生长级别不匹配(当前:{current_growth_level}, CFG:{config_growth_level})，应用CFG配置")
                     # 生长级别不匹配，直接应用CFG配置
                     log_debug_detail(f"应用CFG配置到孔位{next_hole_number}")
                     self._apply_cfg_based_settings(next_hole_number, config_growth_level)
                     return True, "apply_cfg"
             else:
                 # 策略3: 无CFG配置，这是大部分连续孔位的情况，复制当前设置
-                log_strategy(f"策略3: 孔位{next_hole_number}无CFG配置，复制当前设置（最常见情况）")
                 if self.apply_annotation_settings_sync(current_settings):
                     log_debug_detail(f"策略3: 成功复制当前设置")
                     return True, "keep_current"
                 else:
                     log_debug(f"复制当前设置失败，重置为默认设置", "SMART_INHERIT")
-                    log_info(f"*** 策略3: 复制当前设置失败，重置为默认设置 ***", "SMART_INHERIT")
                     # 复制失败，重置为默认设置
                     self._apply_default_settings(next_hole_number)
                     return True, "reset_default"
@@ -4476,14 +4455,10 @@ class PanoramicAnnotationGUI:
         """内部保存方法，不自动跳转
         save_type: "manual" (用户手动保存), "auto" (自动保存), "navigation" (导航时保存)
         """
-        log_info(f"*** 进入 save_current_annotation_internal 方法，类型: {save_type} ***", "SAVE")
         log_debug(f"进入 save_current_annotation_internal 方法，类型: {save_type}", "SAVE")
         
         # 检查基本条件
-        log_info(f"*** 检查条件: slice_files={self.slice_files is not None}, current_slice_index={self.current_slice_index}, len(slice_files)={len(self.slice_files) if self.slice_files else 0} ***", "SAVE")
-        
         if not self.slice_files or self.current_slice_index >= len(self.slice_files):
-            log_info(f"*** 早期退出: 没有切片文件或索引超出范围 ***", "SAVE")
             log_debug(f"早期退出: 没有切片文件或索引超出范围", "SAVE")
             return False  # 明确返回False而不是None
 
@@ -4685,7 +4660,6 @@ class PanoramicAnnotationGUI:
                 # 自动保存和导航保存使用DEBUG级别
                 log_debug(f"自动保存标注: {self.current_panoramic_id}_孔位{self.current_hole_number}，类型: {save_type}", "SAVE")
 
-            log_info(f"*** save_current_annotation_internal 成功完成，返回 True ***", "SAVE")
             return True
             
         except Exception as e:
@@ -4693,7 +4667,6 @@ class PanoramicAnnotationGUI:
             error_msg = f"保存标注失败: {str(e)}"
             # 记录详细错误信息到日志
             log_error(f"{error_msg}\n{traceback.format_exc()}")
-            log_info(f"*** save_current_annotation_internal 异常，返回 False: {error_msg} ***", "SAVE")
             # 重新抛出异常，让上层处理
             raise Exception(error_msg)
     
