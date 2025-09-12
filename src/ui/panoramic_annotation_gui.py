@@ -18,7 +18,8 @@ try:
     from src.utils.logger import (
         log_debug, log_info, log_warning, log_error,
         log_strategy, log_perf, log_nav, log_ann,
-        log_debug_detail, log_ui_detail, log_timing
+        log_debug_detail, log_ui_detail, log_timing,
+        toggle_debug_logging, is_debug_logging_enabled
     )
 except ImportError:
     # 如果日志模块不可用，使用文件日志作为后备
@@ -80,14 +81,12 @@ if str(src_dir) not in sys.path:
 
 # 直接导入模块
 from src.ui.hole_manager import HoleManager
-from src.ui.hole_config_panel import HoleConfigPanel
 from src.ui.enhanced_annotation_panel import EnhancedAnnotationPanel
 from src.services.panoramic_image_service import PanoramicImageService
 from src.services.config_file_service import ConfigFileService
 from src.models.panoramic_annotation import PanoramicAnnotation, PanoramicDataset
 from src.models.enhanced_annotation import EnhancedPanoramicAnnotation, FeatureCombination
-from src.models.enhanced_annotation import EnhancedPanoramicAnnotation
-from src.ui.batch_import_dialog import show_batch_import_dialog
+
 
 # 模型建议导入服务
 try:
@@ -96,11 +95,11 @@ except ImportError:
     # 如果模块不可用，使用占位符
     class ModelSuggestionImportService:
         def __init__(self):
-            pass
+            """占位符实现"""
         def load_from_json(self, path):
             return {}
         def merge_into_session(self, session, suggestions_map):
-            pass
+            """占位符实现"""
 
 
 # 视图模式枚举
@@ -263,6 +262,9 @@ class PanoramicAnnotationGUI:
         self.auto_save_enabled = tk.BooleanVar(value=True)
         self.last_annotation_time = {}  # 记录每个孔位的最后标注时间
         self.current_annotation_modified = False  # 当前标注是否已修改
+        
+        # 起始点调整控制
+        self.user_custom_start_coordinates = False  # 用户是否手动设置了起始坐标 (first_hole_x/y)
 
         # 操作状态控制 - 添加按钮状态管理
         self.is_saving = False  # 保存操作进行中标志
@@ -418,10 +420,7 @@ class PanoramicAnnotationGUI:
         # 右侧切片和控制区域
         self.create_slice_panel(content_frame)
         
-        # 孔位参数配置面板 - 已找到合适参数，暂时注释掉
-        # 孔位参数配置面板 - 包含起始孔位设置
-        # 孔位参数配置面板 - 隐藏，使用默认值
-        # self.create_hole_config_panel(content_frame)
+        # 孔位参数配置面板已被移除（功能简化）
         
         # 底部状态栏
         self.create_status_bar(main_frame)
@@ -451,11 +450,8 @@ class PanoramicAnnotationGUI:
         ttk.Button(toolbar, text="导入模型建议",
                   command=self.import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Button(toolbar, text="导出训练数据",
-                  command=self.export_training_data).pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Button(toolbar, text="批量导入",
-                   command=self.batch_import_annotations).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(toolbar, text="起始点调整",
+                  command=self.show_start_position_dialog).pack(side=tk.LEFT, padx=(0, 10))
 
         # 调试日志开关
         ttk.Checkbutton(toolbar, text="调试日志",
@@ -546,38 +542,7 @@ class PanoramicAnnotationGUI:
         # 标注控制 - 现在是最后一个区域，可以动态扩展
         self.create_annotation_panel(right_frame)
     
-    def create_hole_config_panel(self, parent):
-        """创建孔位配置面板"""
-        # 创建孔位配置面板实例
-        self.hole_config_panel = HoleConfigPanel(parent, self.apply_hole_config)
-        
-        # 绑定视图模式变更事件
-        self.hole_config_panel.add_view_change_callback(self.on_view_mode_changed)
-        
-    def apply_hole_config(self, config: dict):
-        """应用孔位配置"""
-        try:
-            # 更新HoleManager的参数
-            self.hole_manager.update_positioning_params(
-                first_hole_x=config['first_x'],
-                first_hole_y=config['first_y'],
-                horizontal_spacing=config['spacing_x'],
-                vertical_spacing=config['spacing_y'],
-                hole_diameter=config['hole_size'],
-                start_hole=config.get('start_hole', 25)  # 默认从25号孔开始
-            )
-            
-            # 更新PanoramicImageService中的hole_manager引用
-            self.image_service.hole_manager = self.hole_manager
-            
-            # 重新加载全景图以显示新的孔位定位
-            self.load_panoramic_image()
-            
-            start_hole = config.get('start_hole', 25)
-            self.update_status(f"已应用孔位配置: 起始({config['first_x']},{config['first_y']}) 间距({config['spacing_x']},{config['spacing_y']}) 起始孔位({start_hole})")
-            
-        except Exception as e:
-            messagebox.showerror("错误", f"应用孔位配置失败: {str(e)}")
+    # 孔位配置面板已移除（功能简化）
     
     def create_navigation_panel(self, parent):
         """创建简化的导航控制面板"""
@@ -651,10 +616,6 @@ class PanoramicAnnotationGUI:
         # 批量操作按钮
         button_frame = ttk.Frame(batch_frame)
         button_frame.pack(fill=tk.X, padx=5, pady=3)
-        
-        # 批量导入按钮
-        ttk.Button(button_frame, text="批量导入", 
-                  command=self.batch_import_annotations).pack(side=tk.LEFT, padx=2)
         
         # 模型建议按钮
         ttk.Button(button_frame, text="模型建议", 
@@ -1644,9 +1605,9 @@ class PanoramicAnnotationGUI:
             return None
         
         try:
-            # 查找全景图文件
+            # 查找全景图文件 - 使用子目录模式
             panoramic_file = self.image_service.find_panoramic_image(
-                f"{panoramic_id}_hole_1.png", 
+                f"{panoramic_id}/hole_1.png", 
                 self.panoramic_directory
             )
             
@@ -1670,7 +1631,7 @@ class PanoramicAnnotationGUI:
             return {
                 'annotation_str': annotation_str,
                 'parsed': parsed_annotation,
-                'slice_filename': f"{panoramic_id}_hole_{hole_number}.png"
+                'slice_filename': f"hole_{hole_number}.png"  # 子目录模式
             }
         except Exception as e:
             log_debug(f"获取配置标注时出错: {e}", "LOAD")
@@ -1719,6 +1680,7 @@ class PanoramicAnnotationGUI:
             annotation = PanoramicAnnotation.from_filename(
                 config_annotation['slice_filename'],
                 label=parsed.get('label', ''),
+                panoramic_id=self.current_panoramic_id,  # 子目录模式必需参数
                 microbe_type=parsed.get('microbe_type', default_microbe_type),
                 growth_level=parsed.get('growth_level', 'negative'),
                 interference_factors=parsed.get('interference_factors', []),
@@ -1736,9 +1698,9 @@ class PanoramicAnnotationGUI:
             return False
         
         try:
-            # 查找全景图文件
+            # 查找全景图文件 - 使用子目录模式
             panoramic_file = self.image_service.find_panoramic_image(
-                f"{panoramic_id}_hole_1.png", 
+                f"{panoramic_id}/hole_1.png", 
                 self.panoramic_directory
             )
             
@@ -2032,9 +1994,9 @@ class PanoramicAnnotationGUI:
         self.window_resize_log.append(log_entry)
         
         try:
-            # 查找全景图文件
+            # 查找全景图文件 - 使用子目录模式
             panoramic_file = self.image_service.find_panoramic_image(
-                f"{self.current_panoramic_id}_hole_1.png", 
+                f"{self.current_panoramic_id}/hole_1.png", 
                 self.panoramic_directory
             )
             
@@ -2455,8 +2417,8 @@ class PanoramicAnnotationGUI:
             return self._config_data_cache[cache_key]
         
         try:
-            # 查找配置文件
-            panoramic_filename = f"{self.current_panoramic_id}_hole_1.png"
+            # 查找配置文件 - 使用子目录模式
+            panoramic_filename = f"{self.current_panoramic_id}/hole_1.png"
             panoramic_file = self.image_service.find_panoramic_image(
                 panoramic_filename, 
                 getattr(self, 'panoramic_directory', '')
@@ -2508,9 +2470,9 @@ class PanoramicAnnotationGUI:
             return  # 已经加载过，避免重复解析
         
         try:
-            # 查找全景图文件
+            # 查找全景图文件 - 使用子目录模式
             panoramic_file = self.image_service.find_panoramic_image(
-                f"{self.current_panoramic_id}_hole_1.png", 
+                f"{self.current_panoramic_id}/hole_1.png", 
                 self.panoramic_directory
             )
             
@@ -2539,14 +2501,15 @@ class PanoramicAnnotationGUI:
                     # 解析标注字符串，支持复杂格式
                     parsed_annotation = self._parse_annotation_string(annotation_str, self.current_panoramic_id)
                     
-                    # 查找对应的切片文件
-                    slice_filename = f"{self.current_panoramic_id}_hole_{hole_number}.png"
+                    # 查找对应的切片文件 - 使用子目录模式
+                    slice_filename = f"hole_{hole_number}.png"
                     
                     # 创建标注对象 - 配置文件导入，未确认状态
                     # 使用已导入的 PanoramicAnnotation 类
                     default_microbe_type = self.get_default_microbe_type(self.current_panoramic_id)
                     annotation = PanoramicAnnotation.from_filename(
                         slice_filename,
+                        panoramic_id=self.current_panoramic_id,  # 子目录模式需要提供panoramic_id
                         label=parsed_annotation.get('label', ''),
                         microbe_type=parsed_annotation.get('microbe_type', default_microbe_type),
                         growth_level=parsed_annotation.get('growth_level', 'negative'),
@@ -3640,6 +3603,108 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             messagebox.showerror("错误", f"显示延迟配置对话框失败: {str(e)}")
     
+    def show_start_position_dialog(self):
+        """显示起始点位置调整对话框"""
+        try:
+            # 检查是否已加载全景图
+            if not hasattr(self, 'hole_manager') or not self.hole_manager:
+                messagebox.showwarning("提示", "请先加载全景图数据")
+                return
+            
+            # 创建调整窗口
+            position_window = tk.Toplevel(self.root)
+            position_window.title("起始点位置调整")
+            position_window.geometry("350x250")
+            position_window.transient(self.root)
+            position_window.grab_set()
+            
+            # 窗口居中显示
+            position_window.update_idletasks()
+            width = position_window.winfo_width()
+            height = position_window.winfo_height()
+            x = (position_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (position_window.winfo_screenheight() // 2) - (height // 2)
+            position_window.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # 主框架
+            main_frame = ttk.Frame(position_window)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            
+            # 当前值显示
+            current_frame = ttk.LabelFrame(main_frame, text="当前起始位置", padding=10)
+            current_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            current_x = getattr(self.hole_manager, 'first_hole_x', 0)
+            current_y = getattr(self.hole_manager, 'first_hole_y', 0)
+            
+            current_display = ttk.Frame(current_frame)
+            current_display.pack(fill=tk.X)
+            ttk.Label(current_display, text=f"X: {current_x}").pack(side=tk.LEFT)
+            ttk.Label(current_display, text=f"Y: {current_y}").pack(side=tk.LEFT, padx=(20, 0))
+            
+            # 调整框架
+            adjust_frame = ttk.LabelFrame(main_frame, text="新的起始位置", padding=10)
+            adjust_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            # X和Y坐标输入在一行
+            coord_frame = ttk.Frame(adjust_frame)
+            coord_frame.pack(fill=tk.X)
+            
+            ttk.Label(coord_frame, text="X坐标:").pack(side=tk.LEFT)
+            x_var = tk.StringVar(value=str(current_x))
+            x_entry = ttk.Entry(coord_frame, textvariable=x_var, width=8)
+            x_entry.pack(side=tk.LEFT, padx=(5, 15))
+            
+            ttk.Label(coord_frame, text="Y坐标:").pack(side=tk.LEFT)
+            y_var = tk.StringVar(value=str(current_y))
+            y_entry = ttk.Entry(coord_frame, textvariable=y_var, width=8)
+            y_entry.pack(side=tk.LEFT, padx=(5, 0))
+            
+            # 按钮框架
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(15, 0))
+            
+            def apply_position():
+                try:
+                    # 获取新的坐标值
+                    new_x = int(x_var.get())
+                    new_y = int(y_var.get())
+                    
+                    # 更新hole_manager的起始位置
+                    self.hole_manager.update_positioning_params(
+                        first_hole_x=new_x,
+                        first_hole_y=new_y
+                    )
+                    
+                    # 标记用户已手动设置起始坐标
+                    self.user_custom_start_coordinates = True
+                    
+                    log_info(f"起始坐标已更新: X={new_x}, Y={new_y} (用户自定义)", "POSITION")
+                    
+                    # 如果当前有显示的切片，刷新显示
+                    if hasattr(self, 'current_hole_info') and self.current_hole_info:
+                        self.load_current_slice()
+                    
+                    messagebox.showinfo("完成", f"起始点位置已更新为: X={new_x}, Y={new_y}")
+                    position_window.destroy()
+                    
+                except ValueError:
+                    messagebox.showerror("错误", "请输入有效的数字坐标")
+                except Exception as e:
+                    messagebox.showerror("错误", f"更新起始点位置失败: {str(e)}")
+            
+            def reset_position():
+                # 重置为默认值或当前值
+                x_var.set(str(current_x))
+                y_var.set(str(current_y))
+            
+            ttk.Button(button_frame, text="应用", command=apply_position).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="重置", command=reset_position).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="取消", command=position_window.destroy).pack(side=tk.RIGHT, padx=5)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"显示起始点调整对话框失败: {str(e)}")
+
     def should_copy_settings(self, current_settings, next_hole_info):
         """
         判断是否应该复制设置
@@ -4998,8 +5063,6 @@ class PanoramicAnnotationGUI:
     def toggle_debug_logging(self):
         """切换调试日志开关"""
         try:
-            from src.utils.logger import toggle_debug_logging, is_debug_logging_enabled
-
             # 切换调试日志状态
             toggle_debug_logging()
 
@@ -5021,8 +5084,6 @@ class PanoramicAnnotationGUI:
     def sync_debug_logging_state(self):
         """同步调试日志状态到UI"""
         try:
-            from src.utils.logger import is_debug_logging_enabled
-
             # 获取当前调试日志状态
             current_state = is_debug_logging_enabled()
 
@@ -5557,117 +5618,7 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             log_error(f"记录标注变更日志失败: {e}", "ANNOTATION_LOG")
     
-    def batch_import_annotations(self):
-        """批量导入标注"""
-        def import_callback(annotations):
-            """导入回调函数"""
-            try:
-                imported_count = 0
-                
-                for ann_data in annotations:
-                    # 创建PanoramicAnnotation对象
-                    annotation = PanoramicAnnotation(
-                        image_path=ann_data['slice_filename'],
-                        label=ann_data['growth_level'],
-                        bbox=ann_data['bbox'],
-                        confidence=1.0,  # 批量导入置信度默认为1.0
-                        panoramic_image_id=ann_data['panoramic_id'],
-                        hole_number=ann_data['hole_number'],
-                        hole_row=ann_data['hole_row'],
-                        hole_col=ann_data['hole_col'],
-                        microbe_type=ann_data['microbe_type'],
-                        growth_level=ann_data['growth_level'],
-                        interference_factors=[]
-                    )
-                    
-                    # 检查是否已存在相同标注
-                    existing_ann = self.current_dataset.get_annotation_by_hole(
-                        ann_data['panoramic_id'], ann_data['hole_number']
-                    )
-                    if existing_ann:
-                        self.current_dataset.annotations.remove(existing_ann)
-                    
-                    # 添加新标注
-                    self.current_dataset.add_annotation(annotation)
-                    imported_count += 1
-                
-                # 更新显示（仅在当前全景图受影响时重新加载）
-                current_panoramic_affected = any(
-                    ann_data['panoramic_id'] == self.current_panoramic_id 
-                    for ann_data in annotations
-                )
-                if current_panoramic_affected:
-                    self.load_panoramic_image()
-                self.update_statistics()
-                
-                # 刷新当前孔状态（如果当前孔被更新）
-                self.load_existing_annotation()
-                self.update_slice_info_display()
-                
-                # 确保增强标注面板状态同步 - 强制完整刷新
-                if self.enhanced_annotation_panel:
-                    current_ann = self.current_dataset.get_annotation_by_hole(
-                        self.current_panoramic_id, 
-                        self.current_hole_number
-                    )
-                    if current_ann:
-                        log_debug(f"批量导入后强制刷新增强面板 - 孔位{self.current_hole_number}", "BATCH_IMPORT")
-                        
-                        # 先重置面板再重新设置，确保完全刷新
-                        self.enhanced_annotation_panel.reset_annotation()
-                        self.root.update_idletasks()
-                        
-                        # 重新触发完整的标注加载流程
-                        self.load_existing_annotation()
-                        self.root.update_idletasks()
-                        
-                        log_debug(f"增强面板强制刷新完成 - 孔位{self.current_hole_number}", "BATCH_IMPORT")
-                    else:
-                        log_debug(f"当前孔位{self.current_hole_number}无标注，重置增强面板", "BATCH_IMPORT")
-                        self.enhanced_annotation_panel.reset_annotation()
-                
-                # 强制UI刷新
-                self.root.update_idletasks()
-                self.root.update()
-                
-                # 延迟验证刷新
-                self.root.after(100, self._verify_load_refresh)
-                
-                self.update_status(f"成功导入 {imported_count} 个标注")
-                
-            except Exception as e:
-                messagebox.showerror("错误", f"导入处理失败: {str(e)}")
-        
-        # 显示批量导入对话框
-        show_batch_import_dialog(self.root, import_callback)
-    
-    def export_training_data(self):
-        """导出训练数据"""
-        if not self.current_dataset.annotations:
-            messagebox.showwarning("警告", "没有标注数据需要导出")
-            return
-        
-        # 选择导出目录
-        output_dir = filedialog.askdirectory(title="选择导出目录")
-        if not output_dir:
-            return
-        
-        try:
-            # 分别导出细菌和真菌数据
-            bacteria_summary = self.current_dataset.export_for_training(output_dir, 'bacteria')
-            fungi_summary = self.current_dataset.export_for_training(output_dir, 'fungi')
-            
-            # 显示导出摘要
-            summary_text = f"导出完成!\n\n细菌数据: {bacteria_summary['total_exported']} 个样本\n"
-            summary_text += f"真菌数据: {fungi_summary['total_exported']} 个样本\n\n"
-            summary_text += f"导出目录: {output_dir}"
-            
-            messagebox.showinfo("导出完成", summary_text)
-            messagebox.showinfo("导出完成", summary_text)
-            self.update_status(f"已导出训练数据到: {output_dir}")
-            
-        except Exception as e:
-            messagebox.showerror("错误", f"导出失败: {str(e)}")
+
     
     # ==================== 全景图导航方法 ====================
     
@@ -6053,12 +6004,7 @@ class PanoramicAnnotationGUI:
             # 获取当前孔位的建议
             suggestion = self.hole_manager.get_hole_suggestion(hole_number)
 
-            # 更新hole_config_panel的建议显示
-            if hasattr(self, 'hole_config_panel'):
-                if suggestion:
-                    self.hole_config_panel.update_suggestion(suggestion)
-                else:
-                    self.hole_config_panel.clear_suggestion()
+            # hole_config_panel已移除（功能简化）
 
         except Exception as e:
             log_error(f"更新孔位建议显示失败: {str(e)}", "MODEL_SUGGESTION")
@@ -6096,9 +6042,7 @@ class PanoramicAnnotationGUI:
 
     def show_about_dialog(self):
         """显示操作指南对话框"""
-        try:
-            from src.utils.version import get_version_display
-            
+        try:            
             # 创建关于对话框窗口
             about_window = tk.Toplevel(self.root)
             about_window.title("操作指南")
@@ -6359,7 +6303,6 @@ class PanoramicAnnotationGUI:
         except Exception as e:
             log_error(f"显示操作指南对话框时出错: {e}")
             # 显示简化的版本信息
-            from src.utils.version import get_version_display
             simple_text = f"""全景图像标注工具
 版本: {get_version_display()}
 

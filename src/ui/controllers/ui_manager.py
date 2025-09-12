@@ -100,9 +100,6 @@ class UIManager:
         ttk.Button(self.toolbar, text="导入模型建议",
                   command=self.controller._import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Button(self.toolbar, text="导出训练数据",
-                  command=self.controller._export_training_data).pack(side=tk.LEFT, padx=(0, 10))
-
         # 调试日志开关按钮 - 已隐藏以简化界面
         # 如需启用，取消以下注释：
         # self.debug_button = ttk.Button(self.toolbar, text="调试日志: 开",

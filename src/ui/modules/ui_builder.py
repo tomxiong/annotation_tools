@@ -65,12 +65,6 @@ class UIBuilder:
         ttk.Button(self.toolbar_frame, text="导入模型建议",
                   command=self.gui.import_model_suggestions).pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(self.toolbar_frame, text="导出训练数据",
-                  command=self.gui.export_annotations).pack(side=tk.LEFT, padx=(0, 10))
-        
-        ttk.Button(self.toolbar_frame, text="批量导入",
-                  command=self.gui.batch_import_annotations).pack(side=tk.LEFT, padx=(0, 10))
-        
         # 调试日志开关
         self.debug_logging_enabled = tk.BooleanVar()
         ttk.Checkbutton(self.toolbar_frame, text="调试日志",

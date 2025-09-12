@@ -260,25 +260,7 @@ class FileManager:
             messagebox.showerror("错误", f"导入模型建议时发生错误: {str(e)}")
             logger.error(f"导入模型建议失败: {str(e)}")
 
-    def export_training_data(self):
-        """导出训练数据"""
-        output_dir = filedialog.askdirectory(title="选择导出目录")
-        if output_dir:
-            try:
-                # 分别导出细菌和真菌数据
-                bacteria_summary = self.controller.current_dataset.export_for_training(output_dir, 'bacteria')
-                fungi_summary = self.controller.current_dataset.export_for_training(output_dir, 'fungi')
 
-                # 显示导出摘要
-                summary_text = f"导出完成!\n\n细菌数据: {bacteria_summary['total_exported']} 个样本\n"
-                summary_text += f"真菌数据: {fungi_summary['total_exported']} 个样本\n\n"
-                summary_text += f"导出目录: {output_dir}"
-
-                messagebox.showinfo("导出完成", summary_text)
-                self.controller.update_status(f"已导出训练数据到: {output_dir}")
-
-            except Exception as e:
-                messagebox.showerror("错误", f"导出训练数据失败: {str(e)}")
 
     def export_annotations(self):
         """导出标注"""

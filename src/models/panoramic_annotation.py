@@ -77,23 +77,12 @@ class PanoramicAnnotation(Annotation):
                      panoramic_id: str = None, **kwargs) -> 'PanoramicAnnotation':
         """
         从文件名创建标注对象
-        支持两种文件名格式：
-        1. 独立路径模式：EB10000026_hole_108.png
-        2. 子目录模式：hole_108.png (需要提供panoramic_id参数)
+        只支持子目录模式：hole_108.png (需要提供panoramic_id参数)
         """
         stem = Path(filename).stem
         
-        # 尝试解析独立路径模式
-        if '_hole_' in stem:
-            parts = stem.split('_')
-            if len(parts) == 3 and parts[1] == 'hole':
-                panoramic_id = parts[0]
-                hole_number = int(parts[2])
-            else:
-                raise ValueError(f"文件名格式错误，期望格式：EB10000026_hole_108.png，实际：{filename}")
-        
-        # 尝试解析子目录模式
-        elif stem.startswith('hole_'):
+        # 解析子目录模式
+        if stem.startswith('hole_'):
             if panoramic_id is None:
                 raise ValueError(f"子目录模式需要提供panoramic_id参数，文件名：{filename}")
             hole_str = stem[5:]  # 去掉'hole_'前缀
@@ -101,9 +90,8 @@ class PanoramicAnnotation(Annotation):
                 hole_number = int(hole_str)
             else:
                 raise ValueError(f"无效的孔位编号格式：{filename}")
-        
         else:
-            raise ValueError(f"不支持的文件名格式：{filename}，支持格式：EB10000026_hole_108.png 或 hole_108.png")
+            raise ValueError(f"不支持的文件名格式：{filename}，支持格式：hole_108.png (子目录模式)")
         
         # 验证孔位编号范围
         if not (1 <= hole_number <= 120):

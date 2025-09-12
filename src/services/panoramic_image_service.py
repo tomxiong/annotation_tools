@@ -93,18 +93,24 @@ class PanoramicImageService:
     def find_panoramic_image(self, slice_filename: str, panoramic_dir: str) -> Optional[str]:
         """
         根据切片文件名查找对应的全景图
-        切片文件名格式: EB10000026_hole_108.png
+        支持两种格式：
+        1. 独立模式: EB10000026_hole_108.png
+        2. 子目录模式: EB10000026/hole_108.png
         全景图文件名格式: EB10000026.bmp
         """
         try:
-            # 解析切片文件名
-            stem = Path(slice_filename).stem
-            parts = stem.split('_')
-            
-            if len(parts) != 3 or parts[1] != 'hole':
-                raise ValueError(f"切片文件名格式错误: {slice_filename}")
-            
-            panoramic_id = parts[0]
+            # 检查是否为子目录模式路径
+            if '/' in slice_filename or '\\' in slice_filename:
+                # 子目录模式: EB10000026/hole_108.png
+                path = Path(slice_filename)
+                panoramic_id = path.parent.name
+                
+                # 验证文件名格式
+                if not path.name.startswith('hole_'):
+                    raise ValueError(f"切片文件名格式错误: {slice_filename}。子目录模式应该是: panoramic_id/hole_number.png")
+            else:
+                # 不再支持独立模式，只支持子目录模式
+                raise ValueError(f"切片文件名格式错误: {slice_filename}。只支持子目录模式格式，如: EB10000026/hole_108.png")
             
             # 在全景图目录中查找对应文件
             panoramic_path = Path(panoramic_dir)

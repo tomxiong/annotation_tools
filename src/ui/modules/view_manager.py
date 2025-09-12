@@ -269,11 +269,11 @@ class ViewManager:
             self.offset_y = offset_y
             self.scale_factor = scale_factor
 
-            # 关键修正：调整HoleManager的坐标参数以匹配当前画布
-            if hasattr(self.gui, 'hole_manager'):
-                self.gui.hole_manager.adjust_coordinates_for_canvas(
-                    canvas_width, canvas_height, original_width, original_height
-                )
+            # 坐标调整功能已禁用 - 注释掉相关调用
+            # if hasattr(self.gui, 'hole_manager'):
+            #     self.gui.hole_manager.adjust_coordinates_for_canvas(
+            #         canvas_width, canvas_height, original_width, original_height
+            #     )
 
             # 删除之前的所有配置框
             self.panoramic_canvas.delete("config_hole_boxes")

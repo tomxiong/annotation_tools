@@ -22,7 +22,7 @@ from src.services.annotation_engine import AnnotationEngine
 from src.services.config_file_service import ConfigFileService
 from src.services.model_suggestion_import_service import ModelSuggestionImportService
 from src.core.config import Config
-from src.ui.batch_import_dialog import show_batch_import_dialog
+
 from src.ui.hole_manager import HoleManager
 from src.ui.hole_config_panel import HoleConfigPanel
 from src.ui.enhanced_annotation_panel import EnhancedAnnotationPanel
@@ -811,16 +811,7 @@ class MainController(BaseController):
         """导入模型预测结果文件"""
         self.file_manager.import_model_suggestions()
 
-    def _export_training_data(self):
-        """导出训练数据"""
-        output_dir = filedialog.askdirectory(title="选择导出目录")
-        if output_dir:
-            try:
-                # 这里应该实现训练数据导出逻辑
-                self.update_status(f"已导出训练数据到: {output_dir}")
-                messagebox.showinfo("成功", f"训练数据已导出到: {output_dir}")
-            except Exception as e:
-                messagebox.showerror("错误", f"导出训练数据失败: {str(e)}")
+
 
     def _on_panoramic_click(self, event):
         """全景图点击事件"""
@@ -874,8 +865,8 @@ class MainController(BaseController):
                     if hole_pos:
                         hole_x, hole_y = hole_pos
 
-                        # 应用坐标调整参数到孔位位置
-                        adjusted_hole_x, adjusted_hole_y = self._apply_coordinate_adjustments(hole_x, hole_y, 1.0)
+                        # 坐标调整功能已禁用，直接使用原始坐标
+                        adjusted_hole_x, adjusted_hole_y = hole_x, hole_y
 
                         # 检查点击是否在孔位范围内（使用调整后的坐标进行比较）
                         distance = ((img_x - adjusted_hole_x) ** 2 + (img_y - adjusted_hole_y) ** 2) ** 0.5
@@ -1234,9 +1225,9 @@ class MainController(BaseController):
             return
 
         try:
-            # 查找全景图文件
+            # 查找全景图文件 - 使用子目录模式
             panoramic_file = self.image_service.find_panoramic_image(
-                f"{self.current_panoramic_id}_hole_1.png",
+                f"{self.current_panoramic_id}/hole_1.png",
                 self.panoramic_directory
             )
 
@@ -1262,11 +1253,11 @@ class MainController(BaseController):
                 # 获取原始图像尺寸（在缩放之前）
                 original_img_width, original_img_height = self.panoramic_image.size
 
-                # 根据画布尺寸调整HoleManager的坐标参数（使用原始图像尺寸）
-                if hasattr(self, 'hole_manager') and self.hole_manager:
-                    self.hole_manager.adjust_coordinates_for_canvas(
-                        canvas_width, canvas_height, original_img_width, original_img_height
-                    )
+                # 坐标调整功能已禁用 - 注释掉相关调用
+                # if hasattr(self, 'hole_manager') and self.hole_manager:
+                #     self.hole_manager.adjust_coordinates_for_canvas(
+                #         canvas_width, canvas_height, original_img_width, original_img_height
+                #     )
 
                 # 计算缩放比例
                 scale_factor = min(canvas_width / original_img_width, canvas_height / original_img_height)
@@ -1318,11 +1309,11 @@ class MainController(BaseController):
                 logger.warning("panoramic_canvas not available for drawing hole grid")
                 return
 
-            # 确保HoleManager的坐标已根据当前画布调整
-            if hasattr(self, 'hole_manager') and self.hole_manager:
-                self.hole_manager.adjust_coordinates_for_canvas(
-                    canvas_width, canvas_height, img_width, img_height
-                )
+            # 坐标调整功能已禁用 - 注释掉相关调用
+            # if hasattr(self, 'hole_manager') and self.hole_manager:
+            #     self.hole_manager.adjust_coordinates_for_canvas(
+            #         canvas_width, canvas_height, img_width, img_height
+            #     )
 
             # 计算缩放比例和偏移
             scale_x = canvas_width / img_width
@@ -1355,8 +1346,8 @@ class MainController(BaseController):
                         # 原始图像坐标
                         orig_x, orig_y = hole_pos
 
-                        # 应用坐标调整参数
-                        adjusted_x, adjusted_y = self._apply_coordinate_adjustments(orig_x, orig_y, scale)
+                        # 坐标调整功能已禁用，直接使用缩放后的坐标
+                        adjusted_x, adjusted_y = orig_x * scale, orig_y * scale
 
                         # 转换到画布坐标：缩放 + 偏移
                         x = int(adjusted_x + offset_x)
@@ -1421,8 +1412,8 @@ class MainController(BaseController):
                 # 原始图像坐标
                 orig_x, orig_y = hole_pos
 
-                # 应用坐标调整参数
-                adjusted_x, adjusted_y = self._apply_coordinate_adjustments(orig_x, orig_y, scale)
+                # 坐标调整功能已禁用，直接使用缩放后的坐标
+                adjusted_x, adjusted_y = orig_x * scale, orig_y * scale
 
                 # 转换到画布坐标：缩放 + 偏移
                 x = int(adjusted_x + offset_x)
@@ -2079,9 +2070,7 @@ class MainController(BaseController):
         except Exception as e:
             logger.error(f"更新孔位建议显示失败: {str(e)}")
 
-    def _export_training_data(self):
-        """导出训练数据"""
-        self.file_manager.export_training_data()
+
 
     # ==================== 坐标定位调试方法 ====================
 
@@ -2101,12 +2090,13 @@ class MainController(BaseController):
         self.coordinate_scale_adjust = scale_adjust
         logger.info(f"设置缩放调整因子: {scale_adjust}")
 
-    def reset_coordinate_adjustments(self):
-        """重置所有坐标调整参数"""
-        self.coordinate_offset_x = 0.0
-        self.coordinate_offset_y = 0.0
-        self.coordinate_scale_adjust = 1.0
-        logger.info("重置所有坐标调整参数")
+    # 坐标调整功能已禁用
+    # def reset_coordinate_adjustments(self):
+    #     """重置所有坐标调整参数"""
+    #     self.coordinate_offset_x = 0.0
+    #     self.coordinate_offset_y = 0.0
+    #     self.coordinate_scale_adjust = 1.0
+    #     logger.info("重置所有坐标调整参数")
 
     def get_coordinate_debug_info(self) -> dict:
         """获取坐标调试信息"""
@@ -2117,17 +2107,18 @@ class MainController(BaseController):
             'scale_adjust': self.coordinate_scale_adjust
         }
 
-    def _apply_coordinate_adjustments(self, x: float, y: float, scale: float) -> tuple:
-        """应用坐标调整参数"""
-        if not self.debug_coordinate_offset:
-            return x * scale, y * scale
+    # 坐标调整功能已禁用
+    # def _apply_coordinate_adjustments(self, x: float, y: float, scale: float) -> tuple:
+    #     """应用坐标调整参数"""
+    #     if not self.debug_coordinate_offset:
+    #         return x * scale, y * scale
 
-        # 应用缩放调整
-        adjusted_scale = scale * self.coordinate_scale_adjust
+    #     # 应用缩放调整
+    #     adjusted_scale = scale * self.coordinate_scale_adjust
 
-        # 应用偏移调整
-        adjusted_x = x * adjusted_scale + self.coordinate_offset_x
-        adjusted_y = y * adjusted_scale + self.coordinate_offset_y
+    #     # 应用偏移调整
+    #     adjusted_x = x * adjusted_scale + self.coordinate_offset_x
+    #     adjusted_y = y * adjusted_scale + self.coordinate_offset_y
 
         return adjusted_x, adjusted_y
 
